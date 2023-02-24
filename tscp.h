@@ -23,15 +23,15 @@ struct city {
     int nr_cities;      // number of cities
 };
 
-struct transversal {
-    int *path; // array of cities <-- can be as big as 2x the size of the number of cities
-    double cost; // total cost until now
-};
+//struct transversal {
+    //int *path; // array of cities <-- can be as big as 2x the size of the number of cities      <--- we need to check
+    //double cost; // total cost until now
+//};
 
 
 struct transversal_step {
     struct city *current_city;
-    struct city *previous_city;
+    struct transversal_step *previous_step;
     double cost;
     int nr_cities_visited; // this may or may not be the length of the path
 };
@@ -42,6 +42,7 @@ struct AlgorithmState {
     int number_of_roads;
     struct city *cities;
     priority_queue_t *queue;
+    struct transversal_step *solution;
 };
 
 #endif //UNTITLED_TSCP_H

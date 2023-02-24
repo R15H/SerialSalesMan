@@ -14,12 +14,6 @@
 #define MESSAGE(message, ...)
 #endif
 
-#define NR_OF_SOLUTIONS 100
-
-
-
-struct transversal solution; // we only store on solution, the best, which is a complete transversal
-
 
 
 void tscp(struct AlgorithmState *algo_state){
@@ -58,16 +52,19 @@ void tscp(struct AlgorithmState *algo_state){
             struct city* found_city =  bsearch(current_step->current_city->cities[i], current_step->path, current_step->nr_cities_visited, sizeof(struct city *), compare_cities);
             int city_is_in_path = found_city != NULL;
             if(city_is_in_path) continue;
+            int new_cost = found_city->cost[i] + current_step->cost;
+
+
+            int worst_than_found_solution = new_cost > solution->cost;
+            int exceeds_max_cost = new_cost > algo_state->max_lower_bound;
+            if(worst_than_found_solution || exceeds_max_cost) continue; // we let the compiler short circuit the expression, for we trust in the compiler!
 
             // create a new step
             struct transversal_step *step  = calloc(1,sizeof(struct transversal_step));
             step->current_city = current_step->current_city->cities[i];
             current_step->current_city->cities;
+            queue_push(algo_state->queue, step);
         }
-
-
-
-
     }
 
 
@@ -115,8 +112,19 @@ void parse_inputs(int argc, char ** argv, struct AlgorithmState *algo_state){
     fclose(cities_fp);
 }
 
-void print_result() {
+void print_result(struct AlgorithmState *algo_state) {
+    if(algo_state->solution == NULL) {
+        printf("NO SOLUTION");
+        return;
+    }
+    printf("%.1f\n", algo_state->solution->cost);
 
+    struct transversal_step *step = algo_state->solution;
+    struct city *city;
+    while( (city = step->current_city) != NULL) {
+        printf("%d ", city->id);
+        step = step->previous_step;
+    }
 }
 
 void dealloc_data() {
@@ -124,6 +132,8 @@ void dealloc_data() {
 }
 
 int compare_paths(struct transversal_step *a, struct transversal_step *b) {
+    // resolves which path is better (and therefore will have the higher priority)
+    // Paths with smaller costs are better
     return a->cost - b->cost;
 }
 
