@@ -3,4 +3,4 @@ project(untitled C)
 
 set(CMAKE_C_STANDARD 99)
 
-add_executable(untitled tsp.c)
+add_executable(untitled tsp.c tscp.h)
