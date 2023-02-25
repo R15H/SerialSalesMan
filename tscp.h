@@ -29,12 +29,34 @@ struct city {
 //};
 
 
-struct transversal_step {
+struct transversal_step { // union de step_head com step_middle  --> step_head precisa de ter o custo do caminho mas nao precisa de ter o integrates_paths nem o bit lock
     struct city *current_city;
     struct transversal_step *previous_step;
     double cost;
-    int nr_cities_visited; // this may or may not be the length of the path
+    unsigned int nr_cities_visited; // this may or may not be the length of the path
+    unsigned short integrates_paths; // nr of paths that depend (directly) on this step  --> one thread adds all paths --> subtracing by multiple threads
+    // if 1 --> we can free this step (last thread does not need to aquire the lock)
+
+
+    // bit that locks
+    omp_lock_t decrease_counter_lock; // 1 if locked, 0 if not locked   <--- 8 bytes
+    // MAX nr of paths unsigned short --> 65535
 };
+
+struct step_middle {
+    struct city *current_city;
+    struct transversal_step *previous_step;
+    omp_lock_t decrease_counter_lock; // 8 bytes, replaces cost
+    unsigned int nr_belongs_to; // nr of paths it belongs to  , replaces nr_of_cities_visited
+};
+
+union step{
+    struct step_head;
+    struct step_middle;
+};
+
+// each thread will have a pool of spaces for transversal steps
+// this way we do not have to call free all the time & memory is not fragmented
 
 struct AlgorithmState {
     int max_lower_bound;

@@ -137,6 +137,11 @@ int compare_paths(struct transversal_step *a, struct transversal_step *b) {
     return a->cost - b->cost;
 }
 
+// continuo só de paths --> uma pagina na memoria só vai ter paths e nao vai ter outros lixos (quando se tiver a ver um path)
+// steps do mesmo path vao estar juntos na memoria a principio (pk só troca quando há um outro de maior prioridade)
+// trocar entre paths é menos dispendioso pk uma pagina tem os paths de varios caminhos
+// pode ser preciso ter bues paginas para correr o algo uma x ....
+
 int main(int argc, char *argv[]) {
     double exec_time;
     struct AlgorithmState algo_state;
@@ -149,7 +154,7 @@ int main(int argc, char *argv[]) {
 
     exec_time += omp_get_wtime();
     fprintf(stderr, "%.1fs\n", exec_time);
-    print_result(); // to the stdout!
+    print_result(&algo_state); // to the stdout!
 
     queue_delete(algo_state.queue);
     dealloc_data();
