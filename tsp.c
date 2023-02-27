@@ -13,64 +13,111 @@
 #else
 #define MESSAGE(message, ...)
 #endif
+#include <math.h>
 
 
+
+void free_step(struct step_middle *step) {
+    if(step == NULL) return;
+    step->ref_counter--;
+    if(step->ref_counter == 0){
+        free_step(step->previous_step);
+        free(step);
+    }
+}
+
+void free_tour(struct Tour *tour) {
+    if(tour == NULL) return;
+    free_step(tour->previous_step->previous_step);
+    free(tour);
+}
+
+/* Function to calculate x raised to the power y in O(logn)
+    Time Complexity of optimized solution: O(logn)
+*/
+int power2 (int x, unsigned int y)
+{
+    int temp;
+    if (y == 0)
+        return 1;
+
+    temp = power2 (x, y / 2);
+    if ((y % 2) == 0)
+        return temp * temp;
+    else
+        return x * temp * temp;
+}
+
+
+char inline get_visited_all_cities(struct Tour *tour, struct AlgorithmState *algo_state){
+    return tour->cities_visited  & algo_state->all_cities_visited_mask;
+}
+
+char inline get_was_visited(struct Tour *tour, int city_id){
+    return tour->cities_visited & binary_masks[city_id];
+}
+
+
+double get_cost_from_city_to_city(short from, short to){
+    return *(CitiesTable[from].cost)[to]; // possible bug here...
+}
 
 void tscp(struct AlgorithmState *algo_state){
 
 
-    struct transversal_step *step  = calloc(1,sizeof(struct transversal_step)); // calloc to initialize all values to 0
-    step->current_city = algo_state->cities; // start from the first city, same as step->current_city = &AlgorithmState->cities[0];
-    queue_push(algo_state->queue, step);
+    struct Tour *first_step  = calloc(1, sizeof(union step)); // calloc to initialize all values to 0
+    queue_push(algo_state->queue, first_step);
 
-    struct transversal_step *solution;
+    struct Tour *solution;
+    struct Tour *current_tour;
+    while((current_tour = queue_pop(algo_state->queue))){
 
-    struct transversal_step *current_step;
-    while(current_step = queue_pop(algo_state->queue)){
-
-        int step_exceeds_max_cost = current_step->cost > algo_state->max_lower_bound;
-        if(step_exceeds_max_cost) {
-            free(current_step);
+        char step_exceeds_max_cost = current_tour->cost > algo_state->max_lower_bound;
+        char step_worst_than_found_solution  = current_tour->cost > solution->cost;
+        if(step_exceeds_max_cost || step_worst_than_found_solution) {// we let the compiler short circuit the expression, for we trust in the compiler!
+            free_tour(current_tour);
             continue;
         }
-        int step_worst_than_found_solution  = current_step->cost > solution->cost;
-        if(step_worst_than_found_solution) {
-            // TODO free all memory except the solution
-            continue;
-        }
-        int visited_all_cities = algo_state->number_of_cities == (current_step->nr_cities_visited+1);
-        if(visited_all_cities) {
-            if(current_step->cost < solution->cost) {
-                solution = current_step;
-                // TODO free solution
+        if(get_visited_all_cities(current_tour, algo_state)) {
+            char current_tour_is_better = current_tour->cost < solution->cost;
+            if(current_tour_is_better) {
+                free_tour(solution);
+                solution = current_tour;
+            } else {
+                free_tour(current_tour);
             }
+
             continue;
         }
+
         // for each neighbor of the current city that is not in the current path
-        for(int i = 0; i < current_step->current_city->nr_cities; i++){
-
-            struct city* found_city =  bsearch(current_step->current_city->cities[i], current_step->path, current_step->nr_cities_visited, sizeof(struct city *), compare_cities);
-            int city_is_in_path = found_city != NULL;
-            if(city_is_in_path) continue;
-            int new_cost = found_city->cost[i] + current_step->cost;
 
 
-            int worst_than_found_solution = new_cost > solution->cost;
-            int exceeds_max_cost = new_cost > algo_state->max_lower_bound;
-            if(worst_than_found_solution || exceeds_max_cost) continue; // we let the compiler short circuit the expression, for we trust in the compiler!
+        struct Tour *new_tours[algo_state->number_of_cities];
+        for(int i = 0; i <  algo_state->number_of_cities; i++){
+            if(get_was_visited(current_tour, i)) continue;
 
-            // create a new step
-            struct transversal_step *step  = calloc(1,sizeof(struct transversal_step));
-            step->current_city = current_step->current_city->cities[i];
-            current_step->current_city->cities;
-            queue_push(algo_state->queue, step);
+            // create a new tour and convert the current tour to a step middle
+            struct Tour *new_tour = malloc(sizeof(union step)); // malloc because we initialize the values
+            new_tour->previous_step = current_tour->previous_step;
+            new_tour->current_city = i;
+            new_tour->cities_visited = current_tour->cities_visited | binary_masks[i];
+            new_tour->cost = current_tour->cost + get_cost_from_city_to_city(current_tour->current_city, i);
+
+            new_tours[i] = new_tour;
         }
+        // convert current tour to a step middle
+        struct step_middle *new_step_middle = (struct step_middle*) current_tour;
+        new_step_middle->ref_counter = algo_state->number_of_cities;  // iterations of i
+        // create mutex <-- for part2
+
+        // push all new tours to the queue
+        // This must be done only after the step_middle is created, otherwise another thread may grab the one of the new tours, try to free it and end up accessing the current tour as a step_middle!
+        for(int i = 0; i <  algo_state->number_of_cities; i++){
+            queue_push(algo_state->queue, new_tours[i]);
+        }
+
     }
-
-
-
-
-
 
 }
 
@@ -101,6 +148,13 @@ void parse_inputs(int argc, char ** argv, struct AlgorithmState *algo_state){
     algo_state->number_of_cities = atoi(strtok(buffer, " "));
     algo_state->cities = malloc(sizeof(struct city) * number_of_cities);
     algo_state->number_of_roads = atoi(strtok(NULL, " "));
+
+    all_cities_visited_mask = 0;
+    for (int i = 0; i < number_of_cities ; ++i) {
+        binary_masks[i] = power2(2, i);
+        all_cities_visited_mask += binary_masks[i];
+    }
+    algo_state->all_cities_visited_mask = all_cities_visited_mask;
 
     while(fgets(buffer, 1024, cities_fp) == NULL) {
         MESSAGE("Read line: %s", buffer);

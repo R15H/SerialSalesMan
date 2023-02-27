@@ -7,13 +7,14 @@ struct city {
     int id;
 
     // n-1 connections --> all nodes are connected to each other
-    short **cities;
+    short **cities; // se tiverem organizadas por cost ent precisamos desta linha caso contrario podemos ter simplesment os costs
     double **cost;
 };
 
 #define MAX_CITIES 32
 struct city CitiesTable[MAX_CITIES];
-unsigned int binary_mask[MAX_CITIES];
+unsigned int binary_masks[MAX_CITIES];
+unsigned int all_cities_visited_mask;
 
 
 struct Tour {
@@ -43,6 +44,7 @@ struct AlgorithmState {
     struct city *cities;
     priority_queue_t *queue;
     struct Tour *solution;
+    unsigned int all_cities_visited_mask;
 };
 
 #endif UNTITLED_TSCP_H
