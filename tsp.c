@@ -21,15 +21,17 @@ void free_step(struct step_middle *step) {
     if(step == NULL) return;
     step->ref_counter--;
     if(step->ref_counter == 0){
-        free_step(step->previous_step);
+        struct step_middle *prev = step->previous_step;
         free(step);
+        free_step(prev);
     }
 }
 
 void free_tour(struct Tour *tour) {
     if(tour == NULL) return;
-    free_step(tour->previous_step->previous_step);
+    struct step_middle *step = tour->previous_step;
     free(tour);
+    free_step(step);
 }
 
 /* Function to calculate x raised to the power y in O(logn)
