@@ -125,15 +125,19 @@ void tscp(struct AlgorithmState *algo_state) {
 }
 
 
+#define CITY_POINTER_SIZE sizeof(int)
+// define a city pointer type
 
-void place_cost_in_city(short city_source, short city_destination, double cost, int number_of_cities){
+
+void place_cost_in_city(int city_source, int city_destination, double cost, int number_of_cities){
     struct city current_city = cities[city_source];
     if(current_city.cities == NULL){
-        current_city.cities = calloc(number_of_cities, sizeof(short) * number_of_cities);
-        current_city.cost = calloc(number_of_cities, sizeof(short) * number_of_cities);
+        current_city.cities = calloc(number_of_cities, CITY_POINTER_SIZE);
+        current_city.cost = calloc(number_of_cities, sizeof(double) );
     }
+    (*current_city.cities)[city_destination] = city_destination;
     (*current_city.cost)[city_destination] = cost;
-    (*current_city.cities)[city_destination] = (short)city_destination;
+    (*(current_city.cost))[city_destination] = cost;
 }
 
 
@@ -146,16 +150,9 @@ void parse_inputs(int argc, char **argv, struct AlgorithmState *algo_state) {
     };
     char *cities_file = argv[1];
     algo_state->max_lower_bound = atoi(argv[2]);
-    printf(argv[1]);
-    printf(argv[2]);
 
     char buffer[1024];
-#ifdef _WIN32
     FILE *cities_fp = fopen(cities_file, "r");
-#endif
-#ifdef __unix__
-    FILE *cities_fp = fopen(cities_file, "r");
-#endif
 
     if (cities_fp == NULL) {
         ERROR(File not found)
@@ -163,7 +160,7 @@ void parse_inputs(int argc, char **argv, struct AlgorithmState *algo_state) {
     }
     fgets((char *) &buffer, 1024, cities_fp);
     algo_state->number_of_cities = atoi(strtok(buffer, " "));
-    algo_state->cities = calloc(algo_state->number_of_cities,sizeof(struct city) );
+    cities = calloc(algo_state->number_of_cities,sizeof(struct city) );
     algo_state->number_of_roads = atoi(strtok(NULL, " "));
 
     all_cities_visited_mask = 0;
@@ -173,11 +170,11 @@ void parse_inputs(int argc, char **argv, struct AlgorithmState *algo_state) {
     }
     algo_state->all_cities_visited_mask = all_cities_visited_mask;
 
-    while (fgets(buffer, 1024, cities_fp) == NULL) {
+    while (fgets(buffer, 1024, cities_fp) != NULL) {
         MESSAGE("Read line: %s", buffer);
 
-        unsigned int city_number = atoi(strtok(buffer, " "));
-        unsigned int city_destination = atoi(strtok(NULL, " "));
+        int city_number = atoi(strtok(buffer, " "));
+        int city_destination = atoi(strtok(NULL, " "));
         double city_cost = strtod(strtok(NULL, " "), NULL);
         struct city current_city = cities[city_number];
         current_city.id = city_number;

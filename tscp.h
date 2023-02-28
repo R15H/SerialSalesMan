@@ -44,7 +44,7 @@ struct AlgorithmState {
     int max_lower_bound;
     int number_of_cities;
     int number_of_roads;
-    struct city *cities;
+    //struct city *cities;
     priority_queue_t *queue;
     struct Tour *solution;
     unsigned int all_cities_visited_mask;
