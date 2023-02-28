@@ -4,7 +4,8 @@
 #include "tscp.h"
 #include "queue.h"
 
-#define ERROR(message) printf(stderr, #message);
+#define ERROR(message) fprintf(stderr, #message);
+
 
 // print macro for debugging when DEBUG is defined
 #ifdef DEBUG
@@ -66,7 +67,9 @@ void tscp(struct AlgorithmState *algo_state) {
     struct Tour *first_step = calloc(1, sizeof(union step)); // calloc to initialize all values to 0
     queue_push(algo_state->queue, first_step);
 
-    struct Tour *solution;
+    algo_state->solution = calloc(1, sizeof(struct Tour));
+    struct Tour *solution = algo_state->solution;
+
     struct Tour *current_tour;
     while ((current_tour = queue_pop(algo_state->queue))) {
 
@@ -121,32 +124,40 @@ void tscp(struct AlgorithmState *algo_state) {
 }
 
 
-int number_of_cities;
-int number_of_roads;
 struct city *cities;
 
 
 // Initializes the AlgorithmState variable
 void parse_inputs(int argc, char **argv, struct AlgorithmState *algo_state) {
+    printf("Parsing inputs...\n");
     if (argc < 3) {
-        ERROR(Not enough arguments passed. What are you doing?)
+        ERROR("Not enough arguments passed. What are you doing?\n")
+        exit(-1);
     };
     char *cities_file = argv[1];
     algo_state->max_lower_bound = atoi(argv[2]);
+    printf(argv[1]);
+    printf(argv[2]);
 
     char *buffer[1024];
+#ifdef _WIN32
     FILE *cities_fp = fopen(cities_file, "r");
+#endif
+#ifdef __unix__
+    FILE *cities_fp = fopen(cities_file, "r");
+#endif
+
     if (cities_fp == NULL) {
         ERROR(File not found)
         exit(-1);
     }
     fgets(buffer, 1024, cities_fp);
     algo_state->number_of_cities = atoi(strtok(buffer, " "));
-    algo_state->cities = malloc(sizeof(struct city) * number_of_cities);
+    algo_state->cities = malloc(sizeof(struct city) * algo_state->number_of_cities);
     algo_state->number_of_roads = atoi(strtok(NULL, " "));
 
     all_cities_visited_mask = 0;
-    for (int i = 0; i < number_of_cities; ++i) {
+    for (int i = 0; i < algo_state->number_of_cities; ++i) {
         binary_masks[i] = power2(2, i);
         all_cities_visited_mask += binary_masks[i];
     }
