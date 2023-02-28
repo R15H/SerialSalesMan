@@ -11,6 +11,8 @@ struct city {
     double **cost;
 };
 
+struct city *cities;
+
 #define MAX_CITIES 32
 struct city CitiesTable[MAX_CITIES];
 unsigned int binary_masks[MAX_CITIES];

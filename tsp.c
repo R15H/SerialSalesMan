@@ -57,8 +57,8 @@ char inline get_was_visited(struct Tour *tour, int city_id) {
 }
 
 
-double get_cost_from_city_to_city(short from, short to) {
-    return *(CitiesTable[from].cost)[to]; // possible bug here...
+double get_cost_from_city_to_city(int from, int to) {
+    return (*cities[from].cost)[to]; // possible bug here...
 }
 
 void tscp(struct AlgorithmState *algo_state) {
@@ -97,6 +97,7 @@ void tscp(struct AlgorithmState *algo_state) {
 
         struct Tour *new_tours[algo_state->number_of_cities];
         for (int i = 0; i < algo_state->number_of_cities; i++) {
+            if(current_tour->current_city == i) continue; // skip the current city
             if (get_was_visited(current_tour, i)) continue;
 
             // create a new tour and convert the current tour to a step middle
@@ -124,7 +125,16 @@ void tscp(struct AlgorithmState *algo_state) {
 }
 
 
-struct city *cities;
+
+void place_cost_in_city(short city_source, short city_destination, double cost, int number_of_cities){
+    struct city current_city = cities[city_source];
+    if(current_city.cities == NULL){
+        current_city.cities = calloc(number_of_cities, sizeof(short) * number_of_cities);
+        current_city.cost = calloc(number_of_cities, sizeof(short) * number_of_cities);
+    }
+    (*current_city.cost)[city_destination] = cost;
+    (*current_city.cities)[city_destination] = (short)city_destination;
+}
 
 
 // Initializes the AlgorithmState variable
@@ -153,7 +163,7 @@ void parse_inputs(int argc, char **argv, struct AlgorithmState *algo_state) {
     }
     fgets(buffer, 1024, cities_fp);
     algo_state->number_of_cities = atoi(strtok(buffer, " "));
-    algo_state->cities = malloc(sizeof(struct city) * algo_state->number_of_cities);
+    algo_state->cities = calloc(algo_state->number_of_cities,sizeof(struct city) );
     algo_state->number_of_roads = atoi(strtok(NULL, " "));
 
     all_cities_visited_mask = 0;
@@ -166,9 +176,13 @@ void parse_inputs(int argc, char **argv, struct AlgorithmState *algo_state) {
     while (fgets(buffer, 1024, cities_fp) == NULL) {
         MESSAGE("Read line: %s", buffer);
 
-        int city_number = atoi(strtok(buffer, " "));
-        int city_destination = atoi(strtok(NULL, " "));
-        int city_cost = atoi(strtok(NULL, " "));
+        unsigned int city_number = atoi(strtok(buffer, " "));
+        unsigned int city_destination = atoi(strtok(NULL, " "));
+        double city_cost = strtod(strtok(NULL, " "), NULL);
+        struct city current_city = cities[city_number];
+        current_city.id = city_number;
+        place_cost_in_city((short) city_number, (short) city_destination, city_cost, algo_state->number_of_cities);
+        place_cost_in_city((short) city_destination, (short) city_number, city_cost, algo_state->number_of_cities);
     }
     fclose(cities_fp);
 }
