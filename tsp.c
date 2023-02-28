@@ -149,7 +149,7 @@ void parse_inputs(int argc, char **argv, struct AlgorithmState *algo_state) {
     printf(argv[1]);
     printf(argv[2]);
 
-    char *buffer[1024];
+    char buffer[1024];
 #ifdef _WIN32
     FILE *cities_fp = fopen(cities_file, "r");
 #endif
@@ -161,7 +161,7 @@ void parse_inputs(int argc, char **argv, struct AlgorithmState *algo_state) {
         ERROR(File not found)
         exit(-1);
     }
-    fgets(buffer, 1024, cities_fp);
+    fgets((char *) &buffer, 1024, cities_fp);
     algo_state->number_of_cities = atoi(strtok(buffer, " "));
     algo_state->cities = calloc(algo_state->number_of_cities,sizeof(struct city) );
     algo_state->number_of_roads = atoi(strtok(NULL, " "));
@@ -181,8 +181,8 @@ void parse_inputs(int argc, char **argv, struct AlgorithmState *algo_state) {
         double city_cost = strtod(strtok(NULL, " "), NULL);
         struct city current_city = cities[city_number];
         current_city.id = city_number;
-        place_cost_in_city((short) city_number, (short) city_destination, city_cost, algo_state->number_of_cities);
-        place_cost_in_city((short) city_destination, (short) city_number, city_cost, algo_state->number_of_cities);
+        place_cost_in_city( city_number,  city_destination, city_cost, algo_state->number_of_cities);
+        place_cost_in_city( city_destination,  city_number, city_cost, algo_state->number_of_cities);
     }
     fclose(cities_fp);
 }
@@ -194,7 +194,7 @@ void print_result(struct AlgorithmState *algo_state) {
     }
     printf("%.1f\n", algo_state->solution->cost);
 
-    struct step_middle *step = algo_state->solution; // this is actually a Tour but its okay
+    struct step_middle *step = (struct step_middle*) algo_state->solution; // this is actually a Tour but its okay
     do {
         printf("%d ", step->current_city);
     } while ((step = step->previous_step) != NULL);

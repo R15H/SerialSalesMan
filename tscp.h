@@ -4,10 +4,10 @@
 #include "queue.h"
 
 struct city {
-    int id;
+    unsigned int id;
 
     // n-1 connections --> all nodes are connected to each other
-    short **cities; // se tiverem organizadas por cost ent precisamos desta linha caso contrario podemos ter simplesment os costs
+    int **cities; // se tiverem organizadas por cost ent precisamos desta linha caso contrario podemos ter simplesment os costs
     double **cost;
 };
 
@@ -19,14 +19,14 @@ unsigned int binary_masks[MAX_CITIES];
 unsigned int all_cities_visited_mask;
 
 struct step_middle {
-    short current_city;
+    unsigned int current_city;
     struct step_middle *previous_step;
     omp_lock_t decrease_counter_lock; // 8 bytes, replaces cost
     unsigned int ref_counter; // nr of paths it belongs to
 };
 
 struct Tour {
-    short current_city;
+    unsigned int current_city;
     struct step_middle *previous_step;
     double cost;
     unsigned int cities_visited; // bit map of the cities visited
