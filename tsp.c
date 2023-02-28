@@ -1,11 +1,10 @@
 #include <stdio.h>
 #include <omp.h>
 #include <string.h>
-#include <stdbool.h>
 #include "tscp.h"
 #include "queue.h"
 
-#define ERROR(message) printf(stderr, "message");
+#define ERROR(message) printf(stderr, #message);
 
 // print macro for debugging when DEBUG is defined
 #ifdef DEBUG
@@ -130,7 +129,7 @@ struct city *cities;
 // Initializes the AlgorithmState variable
 void parse_inputs(int argc, char **argv, struct AlgorithmState *algo_state) {
     if (argc < 3) {
-        ERROR("Not enough arguments passed. What are you doing?")
+        ERROR(Not enough arguments passed. What are you doing?)
     };
     char *cities_file = argv[1];
     algo_state->max_lower_bound = atoi(argv[2]);
@@ -138,7 +137,7 @@ void parse_inputs(int argc, char **argv, struct AlgorithmState *algo_state) {
     char *buffer[1024];
     FILE *cities_fp = fopen(cities_file, "r");
     if (cities_fp == NULL) {
-        ERROR("File not found")
+        ERROR(File not found)
         exit(-1);
     }
     fgets(buffer, 1024, cities_fp);
@@ -180,7 +179,7 @@ void dealloc_data() {
     free(cities);
 }
 
-int compare_paths(struct transversal_step *a, struct transversal_step *b) {
+int compare_paths(struct Tour *a, struct Tour *b) {
     // resolves which path is better (and therefore will have the higher priority)
     // Paths with smaller costs are better
     return a->cost - b->cost;
