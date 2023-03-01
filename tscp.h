@@ -3,10 +3,6 @@
 
 #include "queue.h"
 
-struct road {
-    int destination_city;
-    double cost;
-};
 
 struct city {
     unsigned int id;

@@ -17,12 +17,14 @@
 
 void free_step(struct step_middle *step) {
     if (step == NULL) return;
+    omp_set_lock(&step->decrease_counter_lock);
     step->ref_counter--;
     if (step->ref_counter == 0) {
         struct step_middle *prev = step->previous_step;
         free(step);
         free_step(prev);
     }
+    omp_unset_lock(&step->decrease_counter_lock);
 }
 
 void free_tour(struct Tour *tour) {
@@ -52,14 +54,16 @@ double get_global_lower_bound(int number_of_cities, struct city *cities) {
     for (int i = 0; i < number_of_cities; i++) {
         lower_bound = cities[i].min_cost + cities[i].min_cost2;
     }
-    return lower_bound/2;
+    return lower_bound / 2;
 }
 
-double compute_updated_lower_bound(double lower_bound, int source_city,int destination_city){
+double compute_updated_lower_bound(double lower_bound, int source_city, int destination_city) {
     double jump_cost = cities[source_city].cost[destination_city];
-    double ct = jump_cost >= cities[source_city].cost[destination_city] ? cities[source_city].cost[destination_city] : cities[source_city].cost[source_city];
-    double cf = jump_cost >= cities[source_city].min_cost2 ? cities[source_city].min_cost2 :  cities[source_city].min_cost;
-    return lower_bound + jump_cost - (ct+cf)/2;
+    double ct = jump_cost >= cities[source_city].cost[destination_city] ? cities[source_city].cost[destination_city]
+                                                                        : cities[source_city].cost[source_city];
+    double cf =
+            jump_cost >= cities[source_city].min_cost2 ? cities[source_city].min_cost2 : cities[source_city].min_cost;
+    return lower_bound + jump_cost - (ct + cf) / 2;
 }
 
 char inline get_visited_all_cities(struct Tour *tour, struct AlgorithmState *algo_state) {
@@ -132,33 +136,37 @@ void tscp(struct AlgorithmState *algo_state) {
 
         //struct Tour *new_tours[algo_state->number_of_cities];
         struct Tour *newTour;
+        struct step_middle *new_step_middle;
+        int i;
         if (get_visited_all_cities(current_tour,
                                    algo_state)) { // if we visited all cities, we must return to the start city (0)
             newTour = go_to_city(current_tour, 0, algo_state);
             queue_push(algo_state->queue, newTour);
-        } else
-            for (int i = 0; i < algo_state->number_of_cities; i++) {
+        } else {
+            int newToursCreated = 0;
+            struct Tour *new_tours[algo_state->number_of_cities];
+
+#pragma omp parallel  {
+#pragma omp parallel for default(none) private(newToursCreated, new_tours, newTour, i) shared(algo_state, current_tour, new_step_middle) reduction(+: newToursCreated)
+            for (i = 0; i < algo_state->number_of_cities; i++) {
                 if (current_tour->current_city == i || get_was_visited(current_tour, i)) continue;
 
                 newTour = go_to_city(current_tour, i, algo_state);
-                queue_push(algo_state->queue, newTour);
-
+                new_tours[newToursCreated++] = newTour;
 
                 //new_tours[i] = new_tour;
             }
-        // convert current tour to a step middle
-        struct step_middle *new_step_middle = (struct step_middle *) current_tour;
-        new_step_middle->ref_counter = 1000000000000000; // -> its equal to the number of tours added!! algo_state->number_of_cities;  // iterations of i
-        // create mutex <-- for part2
-
-        // push all new tours to the queue
-        // This must be done only after the step_middle is created, otherwise another thread may grab the one of the new tours, try to free it and end up accessing the current tour as a step_middle!
-        //for (int i = 0; i < algo_state->number_of_cities; i++) {
-        //    queue_push(algo_state->queue, new_tours[i]);
-        // }
-
+#pragma omp critical
+            {
+                // push all new tours to the queue that this thread found
+                for (int j = 0; j < newToursCreated; j++) {
+                    queue_push(algo_state->queue, new_tours[j]);
+                }
+                ((struct step_middle *) current_tour)->ref_counter += newToursCreated;
+            }
+        };
+        omp_init_lock(&((struct step_middle *) current_tour)->decrease_counter_lock);
     }
-
 }
 
 
@@ -202,6 +210,8 @@ void parse_inputs(int argc, char **argv, struct AlgorithmState *algo_state) {
         binary_masks[i] = power2(2, i);
         all_cities_visited_mask += binary_masks[i];
     }
+
+
     algo_state->all_cities_visited_mask = all_cities_visited_mask;
 
     while (fgets(buffer, 1024, cities_fp) != NULL) {
@@ -226,17 +236,16 @@ void print_result(struct AlgorithmState *algo_state) {
     printf("%.1f\n", algo_state->solution->cost);
 
     struct step_middle *step = (struct step_middle *) algo_state->solution; // this is actually a Tour but its okay
-    int cities_visited = algo_state->number_of_cities+1;
-    char pathTaken[cities_visited*2+1];
-    pathTaken[cities_visited*2] = '\0';
+    int cities_visited = algo_state->number_of_cities + 1;
+    char pathTaken[cities_visited * 2 + 1];
+    pathTaken[cities_visited * 2] = '\0';
 
-    for(int i = cities_visited-1; i >= 0; i--){
+    for (int i = cities_visited - 1; i >= 0; i--) {
 
-        pathTaken[i*2+1] = ' ';
-        pathTaken[i*2] = (char)(step->current_city + '0');
+        pathTaken[i * 2 + 1] = ' ';
+        pathTaken[i * 2] = (char) (step->current_city + '0');
         step = step->previous_step;
     }
-
 
 
     printf("%s\n", pathTaken);
