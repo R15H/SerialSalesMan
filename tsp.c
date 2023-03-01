@@ -213,29 +213,17 @@ void print_result(struct AlgorithmState *algo_state) {
 
     struct step_middle *step = (struct step_middle *) algo_state->solution; // this is actually a Tour but its okay
     int cities_visited = algo_state->number_of_cities+1;
-    char pathTaken[cities_visited*2];
-
-    for(int i = 0; i < cities_visited*2; i += 2) {
-        pathTaken[i] = (char)(step->current_city + '0');
-        pathTaken[i+1] = ' ';
-        step = step->previous_step;
-    }
-    // same as above but backwards
-    for(int i = cities_visited*2; i >2; i -= 2) {
-        pathTaken[i-2] = (char)(step->current_city + '0');
-        pathTaken[i-1] = ' ';
-        step = step->previous_step;
-    }
-    /*
-    for(int i = cities_visited*2; i >2; i -= 2) {
-        pathTaken[i-2] = (char)(step->current_city + '0');
-        pathTaken[i-1] = ' ';
-        step = step->previous_step;
-    }
-*/
-
-
+    char pathTaken[cities_visited*2+1];
     pathTaken[cities_visited*2] = '\0';
+
+    for(int i = cities_visited-1; i >= 0; i--){
+
+        pathTaken[i*2+1] = ' ';
+        pathTaken[i*2] = (char)(step->current_city + '0');
+        step = step->previous_step;
+    }
+
+
 
     printf("%s\n", pathTaken);
 }
