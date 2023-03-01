@@ -47,6 +47,20 @@ int power2(int x, unsigned int y) {
         return x * temp * temp;
 }
 
+double get_global_lower_bound(int number_of_cities, struct city *cities) {
+    double lower_bound = 0;
+    for (int i = 0; i < number_of_cities; i++) {
+        lower_bound = cities[i].min_cost + cities[i].min_cost2;
+    }
+    return lower_bound/2;
+}
+
+double compute_updated_lower_bound(double lower_bound, int source_city,int destination_city){
+    double jump_cost = cities[source_city].cost[destination_city];
+    double ct = jump_cost >= cities[source_city].cost[destination_city] ? cities[source_city].cost[destination_city] : cities[source_city].cost[source_city];
+    double cf = jump_cost >= cities[source_city].min_cost2 ? cities[source_city].min_cost2 :  cities[source_city].min_cost;
+    return lower_bound + jump_cost - (ct+cf)/2;
+}
 
 char inline get_visited_all_cities(struct Tour *tour, struct AlgorithmState *algo_state) {
     return (tour->cities_visited & algo_state->all_cities_visited_mask) == algo_state->all_cities_visited_mask;
@@ -66,7 +80,7 @@ struct Tour *go_to_city(struct Tour *tour, int city_id, struct AlgorithmState *a
     struct Tour *new_tour = malloc(sizeof(union step));
     new_tour->current_city = city_id;
     new_tour->cities_visited = tour->cities_visited | binary_masks[city_id];
-    new_tour->cost = tour->cost + get_cost_from_city_to_city(tour->current_city, city_id);
+    new_tour->cost = compute_updated_lower_bound(tour->cost, tour->current_city, city_id);
     new_tour->previous_step = tour;
     return new_tour;
 }
@@ -85,7 +99,7 @@ void tscp(struct AlgorithmState *algo_state) {
     struct Tour *first_step = malloc(sizeof(union step)); // calloc to initialize all values to 0
     first_step->current_city = 0;
     first_step->cities_visited = 1;
-    first_step->cost = 0; // Estimate lower bound here!
+    first_step->cost = get_global_lower_bound(algo_state->number_of_cities, cities);
     first_step->previous_step = NULL;
 
     queue_push(algo_state->queue, first_step);

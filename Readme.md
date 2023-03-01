@@ -16,3 +16,10 @@ cmake --build .
 ```bash
  gcc -E tsp.c > tsp_expanded.c
 ```
+
+# Run tests
+````powershell
+
+./
+
+````
