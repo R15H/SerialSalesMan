@@ -49,7 +49,7 @@ int power2(int x, unsigned int y) {
 
 
 char inline get_visited_all_cities(struct Tour *tour, struct AlgorithmState *algo_state) {
-    return tour->cities_visited & algo_state->all_cities_visited_mask;
+    return (tour->cities_visited & algo_state->all_cities_visited_mask) == algo_state->all_cities_visited_mask;
 }
 
 char inline get_was_visited(struct Tour *tour, int city_id) {
@@ -58,17 +58,28 @@ char inline get_was_visited(struct Tour *tour, int city_id) {
 
 
 double get_cost_from_city_to_city(int from, int to) {
-    return (*cities[from].cost)[to]; // possible bug here...
+    return cities[from].cost[to]; // possible bug here...
 }
 
+#define DOUBLE_MAX 1.7976931348623157e+308
 void tscp(struct AlgorithmState *algo_state) {
 
 
-    struct Tour *first_step = calloc(1, sizeof(union step)); // calloc to initialize all values to 0
-    queue_push(algo_state->queue, first_step);
 
-    algo_state->solution = calloc(1, sizeof(struct Tour));
-    struct Tour *solution = algo_state->solution;
+    struct Tour *solution = malloc( sizeof(struct Tour));
+    algo_state->solution = solution;
+    solution->cost = DOUBLE_MAX;
+    solution->cities_visited = algo_state->all_cities_visited_mask;
+    solution->current_city = 0;
+    solution->previous_step = NULL;
+
+    struct Tour *first_step = malloc( sizeof(union step)); // calloc to initialize all values to 0
+    first_step->current_city = 0;
+    first_step->cities_visited = 1;
+    first_step->cost = 0; // Estimate lower bound here!
+    first_step->previous_step = NULL;
+
+    queue_push(algo_state->queue, first_step);
 
     struct Tour *current_tour;
     while ((current_tour = queue_pop(algo_state->queue))) {
@@ -95,7 +106,7 @@ void tscp(struct AlgorithmState *algo_state) {
         // for each neighbor of the current city that is not in the current path
 
 
-        struct Tour *new_tours[algo_state->number_of_cities];
+        //struct Tour *new_tours[algo_state->number_of_cities];
         for (int i = 0; i < algo_state->number_of_cities; i++) {
             if(current_tour->current_city == i) continue; // skip the current city
             if (get_was_visited(current_tour, i)) continue;
@@ -106,8 +117,10 @@ void tscp(struct AlgorithmState *algo_state) {
             new_tour->current_city = i;
             new_tour->cities_visited = current_tour->cities_visited | binary_masks[i];
             new_tour->cost = current_tour->cost + get_cost_from_city_to_city(current_tour->current_city, i);
+            queue_push(algo_state->queue, new_tour);
 
-            new_tours[i] = new_tour;
+
+            //new_tours[i] = new_tour;
         }
         // convert current tour to a step middle
         struct step_middle *new_step_middle = (struct step_middle *) current_tour;
@@ -116,9 +129,9 @@ void tscp(struct AlgorithmState *algo_state) {
 
         // push all new tours to the queue
         // This must be done only after the step_middle is created, otherwise another thread may grab the one of the new tours, try to free it and end up accessing the current tour as a step_middle!
-        for (int i = 0; i < algo_state->number_of_cities; i++) {
-            queue_push(algo_state->queue, new_tours[i]);
-        }
+        //for (int i = 0; i < algo_state->number_of_cities; i++) {
+        //    queue_push(algo_state->queue, new_tours[i]);
+       // }
 
     }
 
@@ -130,14 +143,11 @@ void tscp(struct AlgorithmState *algo_state) {
 
 
 void place_cost_in_city(int city_source, int city_destination, double cost, int number_of_cities){
-    struct city current_city = cities[city_source];
-    if(current_city.cities == NULL){
-        current_city.cities = calloc(number_of_cities, CITY_POINTER_SIZE);
-        current_city.cost = calloc(number_of_cities, sizeof(double) );
+    struct city *current_city = &cities[city_source];
+    if(current_city->cost == NULL){
+        current_city->cost = calloc(number_of_cities, sizeof(double ));
     }
-    (*current_city.cities)[city_destination] = city_destination;
-    (*current_city.cost)[city_destination] = cost;
-    (*(current_city.cost))[city_destination] = cost;
+    (current_city->cost)[city_destination] = cost;
 }
 
 
@@ -201,10 +211,11 @@ void dealloc_data() {
     free(cities);
 }
 
-int compare_paths(struct Tour *a, struct Tour *b) {
+char compare_paths(struct Tour *a, struct Tour *b) {
     // resolves which path is better (and therefore will have the higher priority)
     // Paths with smaller costs are better
-    return a->cost - b->cost;
+    if(a->cost > b->cost) return '\0';
+    return '\1';
 }
 
 // continuo só de paths --> uma pagina na memoria só vai ter paths e nao vai ter outros lixos (quando se tiver a ver um path)

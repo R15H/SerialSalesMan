@@ -3,12 +3,19 @@
 
 #include "queue.h"
 
+struct road {
+    int destination_city;
+    double cost;
+};
+
 struct city {
     unsigned int id;
 
     // n-1 connections --> all nodes are connected to each other
-    int **cities; // se tiverem organizadas por cost ent precisamos desta linha caso contrario podemos ter simplesment os costs
-    double **cost;
+//    struct road **roads;
+
+    //int **cities; // se tiverem organizadas por cost ent precisamos desta linha caso contrario podemos ter simplesment os costs
+    double *cost;
 };
 
 struct city *cities;
