@@ -59,15 +59,17 @@ void print_result(struct AlgorithmState *algo_state) {
 
 void free_step(struct step_middle *step) {
     if (step == NULL) return;
-#pragma omp atomic
+
+    omp_set_lock(&step->decrease_counter_lock);
     step->ref_counter--;
-    if (step->ref_counter == 0 && omp_test_lock(&step->decrease_counter_lock)) {
+    if(step->ref_counter == 0) { // WARNING: HAZARDOUS CODE WHICH RELIES ON SEMANTICS
         free_step(step->previous_step);
-        omp_unset_lock(&step->decrease_counter_lock);
+        omp_unset_lock(&step->decrease_counter_lock); // por causa da nossa boa consciencia
         omp_destroy_lock(&step->decrease_counter_lock);
         free(step);
         return;
     }
+    omp_unset_lock(&step->decrease_counter_lock);
 }
 
 void free_tour(struct Tour *tour) {
