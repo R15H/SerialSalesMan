@@ -165,7 +165,7 @@ void tscp(struct AlgorithmState *algo_state) {
 
     struct Tour *first_step = malloc(sizeof(union step)); // calloc to initialize all values to 0
     first_step->current_city = 0;
-    first_step->cities_visited = 0;
+    first_step->cities_visited = 1;
     first_step->cost = get_global_lower_bound(algo_state->number_of_cities, cities);
     first_step->previous_step = NULL;
 
@@ -182,8 +182,8 @@ void tscp(struct AlgorithmState *algo_state) {
             free_tour(current_tour);
             continue;
         }
-        //int returned_to_start = current_tour->current_city == 0;
-        if (get_visited_all_cities(current_tour, algo_state)) {
+        int returned_to_start = current_tour->current_city == 0;
+        if (get_visited_all_cities(current_tour, algo_state) && returned_to_start) {
             int current_tour_is_better = current_tour->cost < algo_state->solution->cost;
             if (current_tour_is_better) {
                 free_tour(algo_state->solution);
@@ -200,7 +200,11 @@ void tscp(struct AlgorithmState *algo_state) {
         struct Tour *newTour;
         int newToursCreated = 0;
         struct Tour *new_tours[algo_state->number_of_cities];
-        int i;
+        int i = 0;
+        if(get_visited_all_cities(current_tour, algo_state)  && !returned_to_start){
+            newTour = go_to_city(current_tour, 0, algo_state);
+            new_tours[newToursCreated++] = newTour;
+        }
             for (i = 0; i < algo_state->number_of_cities; i++) {
                 int road_to_city_does_not_exist  = get_cost_from_city_to_city(current_tour->current_city, i) == -1;
                 if (current_tour->current_city == i || get_was_visited(current_tour, i) || road_to_city_does_not_exist) continue;
