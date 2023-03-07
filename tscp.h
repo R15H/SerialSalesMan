@@ -46,7 +46,7 @@ union step {
 
 
 struct AlgorithmState {
-    int max_lower_bound;
+    double max_lower_bound;
     int number_of_cities;
     int number_of_roads;
     //struct city *cities;
