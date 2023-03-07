@@ -1,0 +1,3 @@
+/home/bruh/SalesmanSerial/SerialSalesMan/CMakeFiles/TSP.dir
+/home/bruh/SalesmanSerial/SerialSalesMan/CMakeFiles/edit_cache.dir
+/home/bruh/SalesmanSerial/SerialSalesMan/CMakeFiles/rebuild_cache.dir
