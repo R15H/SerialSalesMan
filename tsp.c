@@ -14,6 +14,8 @@
 #define MESSAGE(message, ...)
 #endif
 
+#include<math.h>
+
 
 // Tour interface
 int inline get_visited_all_cities(struct Tour *tour, struct AlgorithmState *algo_state) {
@@ -59,17 +61,17 @@ void print_result(struct AlgorithmState *algo_state) {
 
 void free_step(struct step_middle *step) {
     if (step == NULL) return;
-
-    omp_set_lock(&step->decrease_counter_lock);
-    step->ref_counter--;
-    if(step->ref_counter == 0) { // WARNING: HAZARDOUS CODE WHICH RELIES ON SEMANTICS
-        free_step(step->previous_step);
-        omp_unset_lock(&step->decrease_counter_lock); // por causa da nossa boa consciencia
-        omp_destroy_lock(&step->decrease_counter_lock);
-        free(step);
-        return;
+    {
+        //omp_set_lock(&step->decrease_counter_lock);
+        step->ref_counter--;
+        if (step->ref_counter == 0) { // WARNING: HAZARDOUS CODE WHICH RELIES ON SEMANTICS
+            free_step(step->previous_step);
+            //omp_unset_lock(&step->decrease_counter_lock); // por causa da nossa boa consciencia
+            //omp_destroy_lock(&step->decrease_counter_lock);
+            free(step);
+        }
+        // omp_unset_lock(&step->decrease_counter_lock);
     }
-    omp_unset_lock(&step->decrease_counter_lock);
 }
 
 void free_tour(struct Tour *tour) {
@@ -204,6 +206,7 @@ void tscp(struct AlgorithmState *algo_state) {
         struct Tour *new_tours[algo_state->number_of_cities];
         int i = 0;
         if(get_visited_all_cities(current_tour, algo_state)  && !returned_to_start){
+            if(get_cost_from_city_to_city(current_tour->current_city, 0) == -1) continue; // no road to start, this cant be a solution
             newTour = go_to_city(current_tour, 0, algo_state);
             new_tours[newToursCreated++] = newTour;
         }
@@ -217,7 +220,7 @@ void tscp(struct AlgorithmState *algo_state) {
 
         // convert this tour to a step middle
         ((struct step_middle *) current_tour)->ref_counter = newToursCreated;
-        omp_init_lock(&((struct step_middle *) current_tour)->decrease_counter_lock);
+        //    omp_init_lock(&((struct step_middle *) current_tour)->decrease_counter_lock);
 
         // push all new tours to the queue that this thread found
         for (int j = 0; j < newToursCreated; j++) {
@@ -237,7 +240,12 @@ void place_cost_in_city(int city_source, int city_destination, double cost, int 
     struct city *current_city = &cities[city_source];
     if (current_city->cost == NULL) {
         current_city->cost = calloc(number_of_cities, sizeof(double));
-        memset(current_city->cost, -1, number_of_cities * sizeof(double));
+        // initialize every entry of the array to DOUBLE_MAX/2
+        for (int i = 0; i < number_of_cities; i++) {
+            (current_city->cost)[i] = DOUBLE_MAX / 2;
+        }
+
+
     }
     if(current_city->min_cost > cost) current_city->min_cost = cost;
     else if(current_city->min_cost2 > cost)  current_city->min_cost2 = cost;
