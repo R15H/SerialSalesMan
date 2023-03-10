@@ -5,7 +5,7 @@
 
 
 struct city {
-    unsigned int id;
+    short id;
 
     // n-1 connections --> all nodes are connected to each other
 //    struct road **roads;
@@ -24,14 +24,16 @@ unsigned int binary_masks[MAX_CITIES];
 unsigned int all_cities_visited_mask;
 
 struct step_middle {
-    unsigned int current_city;
+    short current_city;
+    int stepID;
     struct step_middle *previous_step;
     omp_lock_t decrease_counter_lock; // 8 bytes, replaces cost
     unsigned int ref_counter; // nr of paths it belongs to
 };
 
 struct Tour {
-    unsigned int current_city;
+    short current_city;
+    int stepID;
     struct step_middle *previous_step;
     double cost;
     unsigned int cities_visited; // bit map of the cities visited

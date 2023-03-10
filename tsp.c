@@ -14,16 +14,16 @@
 #define MESSAGE(message, ...)
 #endif
 
-#define DOUBLE_MAX 1.7976931348623157e+308
+#define DOUBLE_MAX 1.7976931348623155e+308
 
 #pragma runtime_checks( "", off )
-#define MAX_STEPS 500000
+#define MAX_STEPS 148300
 union step steps[MAX_STEPS];
 int free_steps[MAX_STEPS];
 int current_free_step = 0;
 
 union step *get_clean_step() {
-    return &steps[free_steps[current_free_step--]];
+    return &steps[free_steps[--current_free_step]];
 }
 
 void free_union_step(int stepID) {
@@ -79,8 +79,8 @@ void free_step(struct step_middle *step) {
         step->ref_counter--;
         if (step->ref_counter == 0) { // WARNING: HAZARDOUS CODE WHICH RELIES ON SEMANTICS
             //printf("Freeing step_middle...");
-            free_union_step(step->stepID);
             free_step(step->previous_step);
+            free_union_step(step->stepID);
 
             //omp_unset_lock(&step->decrease_counter_lock); // por causa da nossa boa consciencia
             //omp_destroy_lock(&step->decrease_counter_lock);
@@ -93,8 +93,8 @@ void free_tour(struct Tour *tour) {
     //printf("Freeing tour...\n");
     if (tour == NULL) return;
     struct step_middle *step = tour->previous_step;
-    free_union_step(tour->stepID);
     free_step(step);
+    free_union_step(tour->stepID);
 }
 
 /* Function to calculate x raised to the power y in O(logn)
@@ -181,7 +181,7 @@ void print_algo_state(struct AlgorithmState *algo) {
 void tscp(struct AlgorithmState *algo_state) {
 
     algo_state->solution = (struct Tour*) get_clean_step();
-    algo_state->solution->cost = DOUBLE_MAX;
+    algo_state->solution->cost = 100000000 ; // DOUBLE_MAX;
     algo_state->solution->cities_visited = algo_state->all_cities_visited_mask;
     algo_state->solution->current_city = 0;
     algo_state->solution->previous_step = NULL;
@@ -246,7 +246,8 @@ void tscp(struct AlgorithmState *algo_state) {
 
             }
             // loop one by one with the remainder of the cities
-            for (i++; i < algo_state->number_of_cities; i++) {
+            i *=2 +1;
+            for (; i < algo_state->number_of_cities; i++) {
                 int should_go_to_city = !(current_tour->current_city == i || get_was_visited(current_tour, i));
                 if (should_go_to_city) {
                     newTour = go_to_city(current_tour, i, algo_state);
@@ -357,7 +358,7 @@ int main(int argc, char *argv[]) {
     exec_time = -omp_get_wtime();
 
     // inicialize the step ids
-    for(int i = 0; i < MAX_STEPS; i++){
+    for(int i = 0; i <= MAX_STEPS; i++){
         steps[i].Tour.stepID = i;
         free_union_step(i);
     }
