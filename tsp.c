@@ -16,6 +16,7 @@
 #endif
 
 #define DOUBLE_MAX 1.7976931348623155e+308
+#define INT_MAX 2147483647
 
 #pragma runtime_checks( "", off )
 union step *steps;
