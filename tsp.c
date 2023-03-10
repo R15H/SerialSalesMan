@@ -268,14 +268,11 @@ void tscp(struct AlgorithmState *algo_state)
 
         if(discard_tour(current_tour, algo_state)) continue;
 
-        int returned_to_start = current_tour->current_city == 0;
-        if (get_visited_all_cities(current_tour, algo_state) && !returned_to_start)
+        if (get_visited_all_cities(current_tour, algo_state))
         {
             newTour = go_to_city(current_tour, 0, algo_state);
-            if(discard_tour(newTour, algo_state)) continue;
-            queue_push(algo_state->queue, newTour);
-            newToursCreated = 1;
-            // printf("returned to start\n");
+            discard_tour(newTour, algo_state)
+            continue;
         }
         else
         {
