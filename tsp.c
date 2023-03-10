@@ -14,17 +14,31 @@
 #define MESSAGE(message, ...)
 #endif
 
-#include<math.h>
+#define DOUBLE_MAX 1.7976931348623157e+308
 
+#pragma runtime_checks( "", off )
+#define MAX_STEPS 500000
+union step steps[MAX_STEPS];
+int free_steps[MAX_STEPS];
+int current_free_step = 0;
+
+union step *get_clean_step() {
+    return &steps[free_steps[current_free_step--]];
+}
+
+void free_union_step(int stepID) {
+    free_steps[current_free_step++] = stepID;
+}
 
 // Tour interface
-int inline get_visited_all_cities(struct Tour *tour, struct AlgorithmState *algo_state) {
+int get_visited_all_cities(struct Tour *tour, struct AlgorithmState *algo_state) {
     return (tour->cities_visited & algo_state->all_cities_visited_mask) == algo_state->all_cities_visited_mask;
 }
 
 // Cities interface
 
-unsigned int inline get_was_visited(struct Tour *tour, int city_id) {
+unsigned int get_was_visited(struct Tour *tour, int city_id) {
+    //if(cities[tour->current_city].cost[city_id] == DOUBLE_MAX/4) return 1; // if the cost is infinity then the city was visited
     return tour->cities_visited & binary_masks[city_id];
 }
 
@@ -42,7 +56,7 @@ void print_result(struct AlgorithmState *algo_state) {
 
     struct step_middle *step = (struct step_middle *) algo_state->solution; // this is actually a Tour but its okay
     int cities_visited = algo_state->number_of_cities + 1;
-    char pathTaken[cities_visited * 2 + 1];
+    char pathTaken[30 * 2 + 1];
 
     for (int i = cities_visited - 1; i >= 0; i--) {
 
@@ -61,23 +75,25 @@ void print_result(struct AlgorithmState *algo_state) {
 
 void free_step(struct step_middle *step) {
     if (step == NULL) return;
-    {
         //omp_set_lock(&step->decrease_counter_lock);
         step->ref_counter--;
         if (step->ref_counter == 0) { // WARNING: HAZARDOUS CODE WHICH RELIES ON SEMANTICS
+            //printf("Freeing step_middle...");
+            free_union_step(step->stepID);
             free_step(step->previous_step);
+
             //omp_unset_lock(&step->decrease_counter_lock); // por causa da nossa boa consciencia
             //omp_destroy_lock(&step->decrease_counter_lock);
-            free(step);
+            //free(step);
         }
         // omp_unset_lock(&step->decrease_counter_lock);
-    }
 }
 
 void free_tour(struct Tour *tour) {
+    //printf("Freeing tour...\n");
     if (tour == NULL) return;
     struct step_middle *step = tour->previous_step;
-    free(tour);
+    free_union_step(tour->stepID);
     free_step(step);
 }
 
@@ -114,9 +130,12 @@ double compute_updated_lower_bound(double lower_bound, unsigned int source_city,
     return lower_bound + jump_cost - (ct + cf) / 2;
 }
 
+
+
+
 struct Tour *go_to_city(struct Tour *tour, int city_id, struct AlgorithmState *algo_state) {
     // create a new tour and convert the current tour to a step middle
-    struct Tour *new_tour = malloc(sizeof(union step));
+    struct Tour *new_tour = (struct Tour*) get_clean_step();
     new_tour->current_city = city_id;
     new_tour->cities_visited = tour->cities_visited | binary_masks[city_id];
     new_tour->cost = compute_updated_lower_bound(tour->cost, tour->current_city, city_id);
@@ -124,7 +143,6 @@ struct Tour *go_to_city(struct Tour *tour, int city_id, struct AlgorithmState *a
     return new_tour;
 }
 
-#define DOUBLE_MAX 1.7976931348623157e+308
 
 void print_tour(struct Tour *tour) {
     static int count = 0;
@@ -159,15 +177,16 @@ void print_algo_state(struct AlgorithmState *algo) {
 }
 
 
+
 void tscp(struct AlgorithmState *algo_state) {
 
-    algo_state->solution = malloc(sizeof(struct Tour));
+    algo_state->solution = (struct Tour*) get_clean_step();
     algo_state->solution->cost = DOUBLE_MAX;
     algo_state->solution->cities_visited = algo_state->all_cities_visited_mask;
     algo_state->solution->current_city = 0;
     algo_state->solution->previous_step = NULL;
 
-    struct Tour *first_step = malloc(sizeof(union step)); // calloc to initialize all values to 0
+    struct Tour *first_step =  (struct Tour*) get_clean_step();
     first_step->current_city = 0;
     first_step->cities_visited = 1;
     first_step->cost = get_global_lower_bound(algo_state->number_of_cities, cities);
@@ -197,35 +216,51 @@ void tscp(struct AlgorithmState *algo_state) {
             continue;
         }
 
-        // for each neighbor of the current city that is not in the current path
 
-
-        //struct Tour *new_tours[algo_state->number_of_cities];
         struct Tour *newTour;
         int newToursCreated = 0;
-        struct Tour *new_tours[algo_state->number_of_cities];
-        int i = 0;
-        if(get_visited_all_cities(current_tour, algo_state)  && !returned_to_start){
-            if(get_cost_from_city_to_city(current_tour->current_city, 0) == -1) continue; // no road to start, this cant be a solution
+        int loops = algo_state->number_of_cities / 2;
+
+        if (get_visited_all_cities(current_tour, algo_state) && !returned_to_start) {
             newTour = go_to_city(current_tour, 0, algo_state);
-            new_tours[newToursCreated++] = newTour;
-        }
-            for (i = 0; i < algo_state->number_of_cities; i++) {
-                int road_to_city_does_not_exist  = get_cost_from_city_to_city(current_tour->current_city, i) == -1;
-                if (current_tour->current_city == i || get_was_visited(current_tour, i) || road_to_city_does_not_exist) continue;
-                newTour = go_to_city(current_tour, i, algo_state);
-                new_tours[newToursCreated++] = newTour;
-                //new_tours[i] = new_tour;
+            queue_push(algo_state->queue, newTour);
+            newToursCreated = 1;
+            printf("returned to start\n");
+        } else {
+            int i =0;
+            for (; i <= loops; i += 2) {
+                int should_go_to_city = !(current_tour->current_city == i || get_was_visited(current_tour, i));
+                if (should_go_to_city) {
+                    newTour = go_to_city(current_tour, i, algo_state);
+                    queue_push(algo_state->queue, newTour);
+                    newToursCreated++;
+                }
+                //printf("Evaling city %d and %d\n", i, i+1);
+
+                int should_go_to_city2 = !(current_tour->current_city == i + 1 || get_was_visited(current_tour, i + 1));
+                if (should_go_to_city2) {
+                    newTour = go_to_city(current_tour, i + 1, algo_state);
+                    queue_push(algo_state->queue, newTour);
+                    newToursCreated++;
+                }
+
             }
+            // loop one by one with the remainder of the cities
+            for (i++; i < algo_state->number_of_cities; i++) {
+                int should_go_to_city = !(current_tour->current_city == i || get_was_visited(current_tour, i));
+                if (should_go_to_city) {
+                    newTour = go_to_city(current_tour, i, algo_state);
+                    queue_push(algo_state->queue, newTour);
+                    newToursCreated++;
+                }
+        }
+    }
 
         // convert this tour to a step middle
         ((struct step_middle *) current_tour)->ref_counter = newToursCreated;
         //    omp_init_lock(&((struct step_middle *) current_tour)->decrease_counter_lock);
 
         // push all new tours to the queue that this thread found
-        for (int j = 0; j < newToursCreated; j++) {
-            queue_push(algo_state->queue, new_tours[j]);
-        }
 
     }
 }
@@ -242,7 +277,7 @@ void place_cost_in_city(int city_source, int city_destination, double cost, int 
         current_city->cost = calloc(number_of_cities, sizeof(double));
         // initialize every entry of the array to DOUBLE_MAX/2
         for (int i = 0; i < number_of_cities; i++) {
-            (current_city->cost)[i] = DOUBLE_MAX / 2;
+            (current_city->cost)[i] = DOUBLE_MAX / 4;
         }
 
 
@@ -321,6 +356,11 @@ int main(int argc, char *argv[]) {
     parse_inputs(argc, argv, &algo_state);
     exec_time = -omp_get_wtime();
 
+    // inicialize the step ids
+    for(int i = 0; i < MAX_STEPS; i++){
+        steps[i].Tour.stepID = i;
+        free_union_step(i);
+    }
 
     algo_state.queue = queue_create((char (*)(void *, void *)) compare_paths);
     tscp(&algo_state);
