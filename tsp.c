@@ -129,7 +129,6 @@ void discard_or_save_tour(struct Tour *tour, struct AlgorithmState *algo_state, 
             algo_state->solution = tour;
         } else free_tour(tour);
         return;
-
     }
     queue_push(algo_state->queue, tour);
     (*tours_created)++;
