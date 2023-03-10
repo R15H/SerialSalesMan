@@ -18,3 +18,6 @@ add_executable(TSP ${SOURCE_FILES})
 
 # Link with OpenMP
 target_link_libraries(TSP PRIVATE OpenMP::OpenMP_C)
+
+#O3 flag
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3")
