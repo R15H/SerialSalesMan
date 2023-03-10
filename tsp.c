@@ -4,6 +4,7 @@
 #include <assert.h>
 #include "tscp.h"
 #include "queue.h"
+#include <stdlib.h>
 
 #define ERROR(message) fprintf(stderr, #message);
 
@@ -24,6 +25,7 @@ int current_free_step = -1;
 
 union step *get_clean_step()
 {
+    return malloc(sizeof(union step));
     assert(current_free_step > 0);
     return &steps[free_steps[current_free_step--]];
 }
@@ -105,7 +107,8 @@ void free_step(struct step_middle *step)
     { // WARNING: HAZARDOUS CODE WHICH RELIES ON SEMANTICS
         // printf("Freeing step_middle...");
         free_step(step->previous_step);
-        free_union_step(step->stepID);
+        //free_union_step(step->stepID);
+        free(step);
 
         // omp_unset_lock(&step->decrease_counter_lock); // por causa da nossa boa consciencia
         // omp_destroy_lock(&step->decrease_counter_lock);
@@ -121,7 +124,8 @@ void free_tour(struct Tour *tour)
         return;
     struct step_middle *step = tour->previous_step;
     free_step(step);
-    free_union_step(tour->stepID);
+    //free_union_step(tour->stepID);
+    free(tour);
 }
 
 /* Function to calculate x raised to the power y in O(logn)
@@ -271,7 +275,7 @@ void tscp(struct AlgorithmState *algo_state)
         if (get_visited_all_cities(current_tour, algo_state))
         {
             newTour = go_to_city(current_tour, 0, algo_state);
-            discard_tour(newTour, algo_state)
+            discard_tour(newTour, algo_state);
             continue;
         }
         else
@@ -427,6 +431,7 @@ int main(int argc, char *argv[])
     parse_inputs(argc, argv, &algo_state);
     exec_time = -omp_get_wtime();
     // init with max value
+    /*
     steps = malloc(INT_MAX);
     free_steps = malloc(INT_MAX);
 
@@ -439,6 +444,7 @@ int main(int argc, char *argv[])
         steps[i].Tour.stepID = i;
         free_union_step(i);
     }
+    */
 
     algo_state.queue = queue_create((char (*)(void *, void *))compare_paths);
     tscp(&algo_state);
