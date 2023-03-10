@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <omp.h>
 #include <string.h>
+#include <assert.h>
 #include "tscp.h"
 #include "queue.h"
 
@@ -17,17 +18,18 @@
 #define DOUBLE_MAX 1.7976931348623155e+308
 
 #pragma runtime_checks( "", off )
-#define MAX_STEPS 148300
-union step steps[MAX_STEPS];
-int free_steps[MAX_STEPS];
-int current_free_step = 0;
+union step *steps;
+int *free_steps;
+int current_free_step = -1;
 
 union step *get_clean_step() {
-    return &steps[free_steps[--current_free_step]];
+    assert(current_free_step > 0);
+    return &steps[free_steps[current_free_step--]];
 }
 
 void free_union_step(int stepID) {
-    free_steps[current_free_step++] = stepID;
+    current_free_step++;
+    free_steps[current_free_step] = stepID;
 }
 
 // Tour interface
@@ -356,9 +358,15 @@ int main(int argc, char *argv[]) {
     struct AlgorithmState algo_state;
     parse_inputs(argc, argv, &algo_state);
     exec_time = -omp_get_wtime();
+    // init with max value
+    steps = malloc(INT_MAX);
+    free_steps = malloc(INT_MAX);
 
+    printf("Step pointer %p\n", steps);
+    printf("Free steps pointer %p\n", free_steps);
+    fflush(stdout);
     // inicialize the step ids
-    for(int i = 0; i <= MAX_STEPS; i++){
+    for(int i = 0; i <= INT_MAX/sizeof(union step); i++){
         steps[i].Tour.stepID = i;
         free_union_step(i);
     }
