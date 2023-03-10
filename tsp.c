@@ -56,22 +56,33 @@ void print_result(struct AlgorithmState *algo_state) {
     }
     printf("%.1f\n", algo_state->solution->cost);
 
+    
+
     struct step_middle *step = (struct step_middle *) algo_state->solution; // this is actually a Tour but its okay
     int cities_visited = algo_state->number_of_cities + 1;
     char pathTaken[30 * 2 + 1];
 
+        for (int i = cities_visited - 1; i >= 0; i--)
+    {
+        if (step->previous_step == NULL)
+            break;
+        printf("%d ", step->current_city);
+        step = step->previous_step;
+    }
+    
     for (int i = cities_visited - 1; i >= 0; i--) {
 
         pathTaken[i * 2 + 1] = ' ';
         pathTaken[i * 2] = (char) (step->current_city + '0');
         if(step->previous_step == NULL) {
-            printf("Unexpected null step!\n");
+            //printf("Unexpected null step!\n");
             break;
         }
         step = step->previous_step;
     }
     pathTaken[cities_visited * 2] = '\0';
-    printf("%s\n", pathTaken);
+    //printf("%s\n", pathTaken);
+    
 }
 
 
