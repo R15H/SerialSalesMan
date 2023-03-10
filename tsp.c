@@ -193,7 +193,6 @@ void tscp(struct AlgorithmState *algo_state)
         {
             newTour = go_to_city(current_tour, 0, algo_state);
             discard_tour(newTour, algo_state);
-            continue;
         }
         else
         {
