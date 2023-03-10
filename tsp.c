@@ -150,7 +150,7 @@ double get_global_lower_bound(int number_of_cities, struct city *cities)
     return lower_bound / 2;
 }
 
-double compute_updated_lower_bound(double lower_bound, unsigned int source_city, unsigned int destination_city)
+inline double compute_updated_lower_bound(double lower_bound, unsigned int source_city, unsigned int destination_city)
 {
     double jump_cost = get_cost_from_city_to_city(source_city, destination_city);
     double ct = jump_cost >= cities[source_city].min_cost2 ? cities[source_city].min_cost2
@@ -160,7 +160,7 @@ double compute_updated_lower_bound(double lower_bound, unsigned int source_city,
     return lower_bound + jump_cost - (ct + cf) / 2;
 }
 
-struct Tour *go_to_city(struct Tour *tour, int city_id, struct AlgorithmState *algo_state)
+inline struct Tour * go_to_city(struct Tour *tour, int city_id, struct AlgorithmState *algo_state)
 {
     // create a new tour and convert the current tour to a step middle
     struct Tour *new_tour = (struct Tour *)get_clean_step();
@@ -208,6 +208,37 @@ void print_algo_state(struct AlgorithmState *algo)
     queue_print(algo->queue, stderr, (void *)print_step_middle);
 }
 
+int discard_tour(struct Tour *tour, struct AlgorithmState *algo_state)
+{
+    int step_exceeds_max_cost = tour->cost > algo_state->max_lower_bound;
+    int step_worst_than_found_solution = tour->cost > algo_state->solution->cost;
+    if (step_exceeds_max_cost ||
+        step_worst_than_found_solution)
+    { // we let the compiler short circuit the expression, for we trust in the compiler!
+        free_tour(tour);
+        return 1;
+    }
+    int returned_to_start = tour->current_city == 0;
+    if (get_visited_all_cities(tour, algo_state) && returned_to_start)
+    {
+        // print_algo_state(algo_state);
+        int current_tour_is_better = tour->cost < algo_state->solution->cost;
+        if (current_tour_is_better)
+        {
+            free_tour(algo_state->solution);
+            algo_state->solution = tour;
+            // print_tour(current_tour);
+            // print_algo_state(algo_state);
+        }
+        else
+            free_tour(tour);
+
+        return 1;
+
+    }
+    return 0;
+}
+
 void tscp(struct AlgorithmState *algo_state)
 {
 
@@ -230,39 +261,18 @@ void tscp(struct AlgorithmState *algo_state)
     {
         // print_algo_state(algo_state);
         // print_tour(current_tour);
-        int step_exceeds_max_cost = current_tour->cost > algo_state->max_lower_bound;
-        int step_worst_than_found_solution = current_tour->cost > algo_state->solution->cost;
-        if (step_exceeds_max_cost ||
-            step_worst_than_found_solution)
-        { // we let the compiler short circuit the expression, for we trust in the compiler!
-            free_tour(current_tour);
-            continue;
-        }
-        int returned_to_start = current_tour->current_city == 0;
-        if (get_visited_all_cities(current_tour, algo_state) && returned_to_start)
-        {
-            // print_algo_state(algo_state);
-            int current_tour_is_better = current_tour->cost < algo_state->solution->cost;
-            if (current_tour_is_better)
-            {
-                free_tour(algo_state->solution);
-                algo_state->solution = current_tour;
-                // print_tour(current_tour);
-                // print_algo_state(algo_state);
-            }
-            else
-                free_tour(current_tour);
-
-            continue;
-        }
 
         struct Tour *newTour;
         int newToursCreated = 0;
         int loops = algo_state->number_of_cities;
 
+        if(discard_tour(current_tour, algo_state)) continue;
+
+        int returned_to_start = current_tour->current_city == 0;
         if (get_visited_all_cities(current_tour, algo_state) && !returned_to_start)
         {
             newTour = go_to_city(current_tour, 0, algo_state);
+            if(discard_tour(newTour, algo_state)) continue;
             queue_push(algo_state->queue, newTour);
             newToursCreated = 1;
             // printf("returned to start\n");
@@ -276,8 +286,12 @@ void tscp(struct AlgorithmState *algo_state)
                 if (should_go_to_city)
                 {
                     newTour = go_to_city(current_tour, i, algo_state);
-                    queue_push(algo_state->queue, newTour);
-                    newToursCreated++;
+                    if(discard_tour(newTour, algo_state)) {
+                       ;
+                    } else {
+                        queue_push(algo_state->queue, newTour);
+                        newToursCreated++;
+                    }
                 }
                 // printf("Evaling city %d and %d\n", i, i+1);
 
@@ -285,8 +299,12 @@ void tscp(struct AlgorithmState *algo_state)
                 if (should_go_to_city2)
                 {
                     newTour = go_to_city(current_tour, i + 1, algo_state);
-                    queue_push(algo_state->queue, newTour);
-                    newToursCreated++;
+                    if(discard_tour(newTour, algo_state)) {
+                        ;
+                    } else {
+                        queue_push(algo_state->queue, newTour);
+                        newToursCreated++;
+                    }
                 }
             }
             // print_tour(current_tour);
@@ -297,8 +315,12 @@ void tscp(struct AlgorithmState *algo_state)
                 if (should_go_to_city)
                 {
                     newTour = go_to_city(current_tour, algo_state->number_of_cities - 1, algo_state);
-                    queue_push(algo_state->queue, newTour);
-                    newToursCreated++;
+                    if(discard_tour(newTour, algo_state)) {
+                        ;
+                    } else {
+                        queue_push(algo_state->queue, newTour);
+                        newToursCreated++;
+                    }
                 }
             }
         }
