@@ -5,15 +5,9 @@
 
 
 struct city {
-    short id;
-
-    // n-1 connections --> all nodes are connected to each other
-//    struct road **roads;
-
-    //int **cities; // se tiverem organizadas por cost ent precisamos desta linha caso contrario podemos ter simplesment os costs
     double min_cost;
     double min_cost2;
-    double *cost; // --> test if this is better -> entry with index "id" contains the second lowest edge cost
+    double *cost;
 };
 
 struct city *cities;

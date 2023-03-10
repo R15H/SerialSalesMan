@@ -31,6 +31,8 @@ union step *get_clean_step()
     return &steps[free_steps[current_free_step--]];
 }
 
+
+
 void free_union_step(int stepID)
 {
     current_free_step++;
@@ -52,7 +54,23 @@ double get_cost_from_city_to_city(unsigned int from, unsigned int to)
 {
     return cities[from].cost[to];
 }
-void print_result(struct AlgorithmState algo_state)
+
+/* Function to calculate x raised to the power y in O(logn)
+    Time Complexity of optimized solution: O(logn)
+*/
+int power2(int x, unsigned int y) {
+    int temp;
+    if (y == 0)
+        return 1;
+
+    temp = power2(x, y / 2);
+    if ((y % 2) == 0)
+        return temp * temp;
+    else
+        return x * temp * temp;
+}
+
+void print_result(struct AlgorithmState *algo_state)
 {
     if (algo_state->solution == NULL)
     {
@@ -60,7 +78,7 @@ void print_result(struct AlgorithmState algo_state)
         return;
     }
 
-    struct step_middlestep = (struct step_middle )algo_state->solution; // this is actually a Tour but its okay
+    struct step_middle *step = (struct step_middle *)algo_state->solution; // this is actually a Tour but its okay
     int cities_visited = algo_state->number_of_cities + 1;
     int values [cities_visited];
 
@@ -68,7 +86,6 @@ void print_result(struct AlgorithmState algo_state)
 
     for (int i = cities_visited - 1; i >= 0; i--)
     {
-        if (step->previous_step == NULL)break;
         values[i] = step->current_city;
         step = step->previous_step;
     }
@@ -123,43 +140,6 @@ inline struct Tour * go_to_city(struct Tour *tour, int city_id, struct Algorithm
     return new_tour;
 }
 
-void print_tour(struct Tour *tour)
-{
-    static int count = 0;
-    if (tour == NULL)
-    {
-        printf("NULL");
-        return;
-    }
-    printf("Tour nr %d: current_city: %d, cities_visited: %d, cost: %f, previous_step: %p\n", count++, tour->current_city,
-           tour->cities_visited, tour->cost, tour->previous_step);
-}
-
-void print_step_middle(struct step_middle *step)
-{
-    if (step == NULL)
-    {
-        printf("NULL");
-        return;
-    }
-    printf("Step: current_city: %d, previous_step: %p, ref_counter: %d\n",
-           step->current_city,
-           step->previous_step, step->ref_counter);
-}
-
-void print_algo_state(struct AlgorithmState *algo)
-{
-    fprintf(stderr, "Algorithm state: \n");
-    fprintf(stderr, "number_of_cities: %d\n", algo->number_of_cities);
-    fprintf(stderr, "all_cities_visited_mask: %d\n", algo->all_cities_visited_mask);
-    fprintf(stderr, "max_lower_bound: %f\n", algo->max_lower_bound);
-    fprintf(stderr, "Current best solution: ");
-    print_tour(algo->solution);
-    print_result(algo);
-    fprintf(stderr, "\n Queue:");
-    queue_print(algo->queue, stderr, (void *)print_step_middle);
-}
-
 int discard_tour(struct Tour *tour, struct AlgorithmState *algo_state)
 {
     int step_exceeds_max_cost = tour->cost > algo_state->max_lower_bound;
@@ -188,7 +168,6 @@ int discard_tour(struct Tour *tour, struct AlgorithmState *algo_state)
 
 void tscp(struct AlgorithmState *algo_state)
 {
-
     algo_state->solution = (struct Tour *)get_clean_step();
     algo_state->solution->cost = 100000000;
     algo_state->solution->cities_visited = algo_state->all_cities_visited_mask;
@@ -321,8 +300,6 @@ void parse_inputs(int argc, char **argv, struct AlgorithmState *algo_state)
         int city_number = atoi(strtok(buffer, " "));
         int city_destination = atoi(strtok(NULL, " "));
         double city_cost = strtod(strtok(NULL, " "), NULL);
-        struct city current_city = cities[city_number];
-        current_city.id = city_number;
         place_cost_in_city(city_number, city_destination, city_cost, algo_state->number_of_cities);
         place_cost_in_city(city_destination, city_number, city_cost, algo_state->number_of_cities);
     }
@@ -354,7 +331,7 @@ int main(int argc, char *argv[])
 
     exec_time += omp_get_wtime();
     fprintf(stderr, "%.1fs\n", exec_time);
-    print_result(&algo_state); // to the stdout!
+    print_result(&algo_state);
     queue_delete(algo_state.queue);
     dealloc_data();
 }
