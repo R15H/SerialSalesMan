@@ -1,25 +1,26 @@
 # Run
 
-```bash
 ```
+# windows
+./tscp.exe <path to file> LB
+# linux
+./tscp <path to file> LB
+
+```
+
 
 # Build
 
 ```bash
-# build in windows
-cmake --build . 
+# compatible with windows & linux
+cmake .
+cmake --build ./
+```
+
+or if on linux just
+
+```bash
+make
 ```
 
  
-# Debug utils
-
-```bash
- gcc -E tsp.c > tsp_expanded.c
-```
-
-# Run tests
-````powershell
-
-./
-
-````
