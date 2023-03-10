@@ -80,7 +80,7 @@ void print_result(struct AlgorithmState *algo_state)
 
     struct step_middle *step = (struct step_middle *)algo_state->solution; // this is actually a Tour but its okay
     int cities_visited = algo_state->number_of_cities + 1;
-    int values [cities_visited];
+    int values [50]; // max 50 cities
 
     printf("%.1f\n",algo_state->solution->cost);
 
@@ -97,7 +97,7 @@ void free_step(struct step_middle *step)
 {
     if (step == NULL)return;
     step->ref_counter--;
-    if (step->ref_counter == 0)
+    if (step->ref_counter <= 0)
     {
         free_step(step->previous_step);
         free(step);
@@ -193,6 +193,7 @@ void tscp(struct AlgorithmState *algo_state)
         {
             newTour = go_to_city(current_tour, 0, algo_state);
             discard_tour(newTour, algo_state);
+            newToursCreated++;
         }
         else
         {
