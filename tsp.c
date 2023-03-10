@@ -16,30 +16,17 @@
 #endif
 
 #define DOUBLE_MAX 1.7976931348623155e+308
-#define INT_MAX 2147483647
-#define CITY_POINTER_SIZE sizeof(int)
 
 #pragma runtime_checks("", off)
-union step *steps;
-int *free_steps;
-int current_free_step = -1;
 
 union step *get_clean_step() {
     return malloc(sizeof(union step));
-    assert(current_free_step > 0);
-    return &steps[free_steps[current_free_step--]];
 }
 
-
-void free_union_step(int stepID) {
-    current_free_step++;
-    free_steps[current_free_step] = stepID;
-}
 
 int get_visited_all_cities(struct Tour *tour, struct AlgorithmState *algo_state) {
     return (tour->cities_visited & algo_state->all_cities_visited_mask) == algo_state->all_cities_visited_mask;
 }
-
 
 unsigned int get_was_visited(struct Tour *tour, int city_id) {
     return tour->cities_visited & binary_masks[city_id];
