@@ -132,7 +132,7 @@ void discard_or_save_tour(struct Tour *tour, struct AlgorithmState *algo_state, 
 
     }
     queue_push(algo_state->queue, tour);
-    tours_created++;
+    (*tours_created)++;
 }
 
 void tscp(struct AlgorithmState *algo_state) {
