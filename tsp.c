@@ -113,13 +113,13 @@ inline struct Tour *go_to_city(struct Tour *tour, int city_id, struct AlgorithmS
     return new_tour;
 }
 
-void discard_or_save_tour(struct Tour *tour, struct AlgorithmState *algo_state, int *tours_created) {
+int discard_or_save_tour(struct Tour *tour, struct AlgorithmState *algo_state, int *tours_created) {
     int step_exceeds_max_cost = tour->cost > algo_state->max_lower_bound;
     int step_worst_than_found_solution = tour->cost > algo_state->solution->cost;
     if (step_exceeds_max_cost ||
         step_worst_than_found_solution) { // we let the compiler short circuit the expression, for we trust in the compiler!
         free_tour(tour);
-        return;
+        return 0;
     }
     int returned_to_start = tour->current_city == 0;
     if (get_visited_all_cities(tour, algo_state) && returned_to_start) {
@@ -128,11 +128,25 @@ void discard_or_save_tour(struct Tour *tour, struct AlgorithmState *algo_state, 
             free_tour(algo_state->solution);
             algo_state->solution = tour;
         } else free_tour(tour);
-        return;
+        return 0;
     }
-    queue_push(algo_state->queue, tour);
+    //////queue_push(algo_state->queue, tour);
     (*tours_created)++;
+    return 1;
 }
+
+
+int analyseTour(struct Tour *tour, struct AlgorithmState *algo_state, struct Tour **tours) {
+    int tours_created = 0;
+    for (int i = 0; i < algo_state->number_of_cities; i++) {
+        if (get_was_visited(tour, i)) continue;
+        struct Tour *new_tour = go_to_city(tour, i, algo_state);
+        int tour_saved = discard_or_save_tour(new_tour, algo_state, &tours_created);
+        if(tour_saved)tours[tours_created++] = new_tour;
+    }
+    return tours_created;
+}
+
 
 void tscp(struct AlgorithmState *algo_state) {
     algo_state->solution = (struct Tour *) get_clean_step();
