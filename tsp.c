@@ -220,46 +220,8 @@ void tscp(struct AlgorithmState *algo_state) {
 
     struct Tour *current_tour;
     while ((current_tour = queue_pop(algo_state->queue))) {
-        int step_worst_than_found_solution = current_tour->cost > algo_state->solution->cost;
-        if (step_worst_than_found_solution) {
-            free_tour(current_tour);
-            continue;
-        }
-
-
         int newToursCreated = analyseTour(current_tour, algo_state);
         ((struct step_middle *) current_tour)->ref_counter = newToursCreated;
-
-
-        /*
-        if (get_visited_all_cities(current_tour, algo_state)) {
-            newTour = go_to_city(current_tour, 0, algo_state);
-            discard_or_save_tour(newTour, algo_state, &newToursCreated);
-        } else {
-            int i = 0;
-            for (; i < loops - 1; i += 2) {
-                int should_go_to_city = !(current_tour->current_city == i || get_was_visited(current_tour, i));
-                if (should_go_to_city) {
-                    newTour = go_to_city(current_tour, i, algo_state);
-                    discard_or_save_tour(newTour, algo_state, &newToursCreated);
-                }
-                int should_go_to_city2 = !(current_tour->current_city == i + 1 || get_was_visited(current_tour, i + 1));
-                if (should_go_to_city2) {
-                    newTour = go_to_city(current_tour, i + 1, algo_state);
-                    discard_or_save_tour(newTour, algo_state, &newToursCreated);
-                }
-            }
-            //  loop one by one with the remainder of the cities
-            if (0 != algo_state->number_of_cities % 2) {
-                int should_go_to_city = !(current_tour->current_city == algo_state->number_of_cities - 1 ||
-                                          get_was_visited(current_tour, algo_state->number_of_cities - 1));
-                if (should_go_to_city) {
-                    newTour = go_to_city(current_tour, algo_state->number_of_cities - 1, algo_state);
-                    discard_or_save_tour(newTour, algo_state, &newToursCreated);
-                }
-            }
-        }
-         */
     }
 }
 
