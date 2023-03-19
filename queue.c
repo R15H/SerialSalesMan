@@ -1,4 +1,5 @@
 #include "queue.h"
+#include "tscp.h"
 
 #define REALLOC_SIZE 1024
 #define SWAP(x, y) void* tmp = x; x = y; y = tmp;
@@ -8,6 +9,9 @@ static size_t parent_of(size_t i)
 {
 	return (i - 1) / 2;
 }
+
+
+
 
 // Bubble-down the element to the correct position
 // (i.e., compare it to its child and then swap them if necessary).
@@ -20,13 +24,16 @@ void bubble_down(priority_queue_t *queue, size_t node)
 	
 	// Compare with the left node
 	if (left_child < queue->size &&
-	    queue->cmpfn(queue->buffer[node], queue->buffer[left_child]))
+            ((struct Tour*)(queue->buffer[node]))->cost > ((struct Tour*) (queue->buffer[left_child]))->cost))
 	{
 		i = left_child;
 	}
 	
 	// Compare with the right node
-	if (right_child < queue->size && queue->cmpfn(queue->buffer[i], queue->buffer[right_child]))
+	if (right_child < queue->size &&
+            ((struct Tour*)(queue->buffer[i]))->cost >
+                    ((struct Tour*) (queue->buffer[right_child]))->cost
+    )
 	{
 		i = right_child;
 	}
@@ -78,7 +85,7 @@ void queue_push(priority_queue_t *queue, void* new_element)
 
 	// Bubble-up the new element to the correct position
 	// (i.e., compare it to the parent and then swap them if necessary)
-	while (node > 0 && queue->cmpfn(queue->buffer[parent_of(node)], queue->buffer[node]))
+	while (node > 0 && ((struct tour*)(queue->buffer[parent_of(node)]))->cost > ((struct tour*) queue->buffer[node] )->cost)
 	{
 		size_t parent = parent_of(node);
 		SWAP(queue->buffer[node], queue->buffer[parent])
