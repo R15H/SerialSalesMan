@@ -66,6 +66,7 @@ void print_result(struct AlgorithmState *algo_state) {
     for (int i = cities_visited - 1; i >= 0; i--) {
         values[i] = step->current_city;
         step = step->previous_step;
+        if(step == NULL) break;
     }
     for (int i = 0; i < cities_visited - 1; i++) printf("%d ", values[i]);
     printf("0 \n");
@@ -95,54 +96,60 @@ double get_global_lower_bound(int number_of_cities, struct city *cities) {
 
 inline double compute_updated_lower_bound(double lower_bound, unsigned int source_city, unsigned int destination_city) {
     double jump_cost = get_cost_from_city_to_city(source_city, destination_city);
-    double ct = jump_cost >= cities[source_city].min_cost2 ? cities[source_city].min_cost2
-                                                           : cities[source_city].min_cost;
+    int comp_1 = jump_cost >= cities[source_city].min_cost2
+    double ct = (comp_1) * cities[source_city].min_cost2
+                + (comp_1 == 0) * cities[source_city].min_cost;
+    int comp_2 = jump_cost >= cities[source_city].min_cost2
     double cf =
-            jump_cost >= cities[destination_city].min_cost2 ? cities[destination_city].min_cost2
-                                                            : cities[destination_city].min_cost;
+            (comp_2) * cities[destination_city].min_cost2 +
+                    (comp_2==0) * cities[destination_city].min_cost;
     return lower_bound + jump_cost - (ct + cf) / 2;
 }
 
-inline struct Tour *go_to_city(struct Tour *tour, int city_id, struct AlgorithmState *algo_state) {
+inline struct Tour *go_to_city(struct Tour *tour, short city_id, struct AlgorithmState *algo_state, double cost) {
     // create a new tour and convert the current tour to a step middle
     struct Tour *new_tour = (struct Tour *) get_clean_step();
     new_tour->current_city = city_id;
     new_tour->cities_visited = tour->cities_visited | binary_masks[city_id];
-    new_tour->cost = compute_updated_lower_bound(tour->cost, tour->current_city, city_id);
+    new_tour->cost = cost ;
     new_tour->previous_step = (struct step_middle *) tour;
     return new_tour;
 }
 
-int discard_or_save_tour(struct Tour *tour, struct AlgorithmState *algo_state, int *tours_created) {
-    int step_exceeds_max_cost = tour->cost > algo_state->max_lower_bound;
-    int step_worst_than_found_solution = tour->cost > algo_state->solution->cost;
-    if (step_exceeds_max_cost ||
-        step_worst_than_found_solution) { // we let the compiler short circuit the expression, for we trust in the compiler!
-        free_tour(tour);
-        return 0;
-    }
-    int returned_to_start = tour->current_city == 0;
-    if (get_visited_all_cities(tour, algo_state) && returned_to_start) {
-        int current_tour_is_better = tour->cost < algo_state->solution->cost;
-        if (current_tour_is_better) {
-            free_tour(algo_state->solution);
-            algo_state->solution = tour;
-        } else free_tour(tour);
-        return 0;
-    }
-    //////queue_push(algo_state->queue, tour);
-    (*tours_created)++;
-    return 1;
+int discard_or_save_tour(double cost,int current_city, struct AlgorithmState *algo_state) {
+    int step_exceeds_max_cost = cost > algo_state->max_lower_bound;
+    int step_worst_than_found_solution = cost > algo_state->solution->cost;
+    return step_exceeds_max_cost ||
+        step_worst_than_found_solution;
 }
 
 
-int analyseTour(struct Tour *tour, struct AlgorithmState *algo_state, struct Tour **tours) {
+int analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
     int tours_created = 0;
     for (int i = 0; i < algo_state->number_of_cities; i++) {
+        struct Tour *new_tour;
         if (get_was_visited(tour, i)) continue;
-        struct Tour *new_tour = go_to_city(tour, i, algo_state);
-        int tour_saved = discard_or_save_tour(new_tour, algo_state, &tours_created);
-        if(tour_saved)tours[tours_created++] = new_tour;
+        double new_cost = compute_updated_lower_bound(tour->cost, tour->current_city, i);
+
+        int discard_tour = discard_or_save_tour(new_cost, i,algo_state);
+        if(!discard_tour) {
+            new_tour = go_to_city(tour, i, algo_state, new_cost);
+            int finished = get_visited_all_cities(new_tour,algo_state);
+            if(finished){ // return to city 0
+                // convert new tour to step middle
+                //((struct step_middle*)new_tour)->ref_counter = 1;
+
+                struct Tour * completed_tour = go_to_city(new_tour, 0, algo_state, compute_updated_lower_bound(new_tour->cost, i, 0));
+                    int current_tour_is_better =  completed_tour->cost < algo_state->solution->cost;
+                    if (current_tour_is_better) {
+                        free_tour(algo_state->solution);
+                        algo_state->solution = completed_tour;
+                    } else free_tour(completed_tour);
+                continue;
+            }
+
+            queue_push(algo_state->queue, new_tour);
+        }
     }
     return tours_created;
 }
@@ -165,10 +172,22 @@ void tscp(struct AlgorithmState *algo_state) {
 
     struct Tour *current_tour;
     while ((current_tour = queue_pop(algo_state->queue))) {
-        struct Tour *newTour;
-        int newToursCreated = 0;
-        int loops = algo_state->number_of_cities;
+        struct Tour toursCreated[30];
 
+
+        int step_worst_than_found_solution = current_tour->cost > algo_state->solution->cost;
+        if(step_worst_than_found_solution) {
+            free_tour(current_tour);
+            continue;
+        }
+
+
+
+        int newToursCreated = analyseTour(current_tour, algo_state);
+        ((struct step_middle *) current_tour)->ref_counter = newToursCreated;
+
+
+        /*
         if (get_visited_all_cities(current_tour, algo_state)) {
             newTour = go_to_city(current_tour, 0, algo_state);
             discard_or_save_tour(newTour, algo_state, &newToursCreated);
@@ -196,7 +215,7 @@ void tscp(struct AlgorithmState *algo_state) {
                 }
             }
         }
-        ((struct step_middle *) current_tour)->ref_counter = newToursCreated;
+         */
     }
 }
 

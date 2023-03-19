@@ -1,10 +1,12 @@
-cmake_minimum_required(VERSION 3.16.0)
-project(tsp C)
+cmake_minimum_required(VERSION 3.24.0)
+project(tsp C )
 
 set(CMAKE_C_STANDARD 99)
 
 # Find OpenMP package
 find_package(OpenMP REQUIRED)
+
+#set(CMAKE_EXE_LINKER_FLAGS "-static")
 
 set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/build_releas)
 
@@ -20,4 +22,4 @@ add_executable(tsp ${SOURCE_FILES})
 target_link_libraries(tsp PRIVATE OpenMP::OpenMP_C)
 
 #O3 flag
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -Wall -Wpedantic")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -g  ")

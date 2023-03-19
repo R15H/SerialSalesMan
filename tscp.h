@@ -18,7 +18,7 @@ unsigned int binary_masks[MAX_CITIES];
 unsigned int all_cities_visited_mask;
 
 struct step_middle {
-    short current_city;
+    int current_city;
     int stepID;
     struct step_middle *previous_step;
     omp_lock_t decrease_counter_lock; // 8 bytes, replaces cost
@@ -26,7 +26,7 @@ struct step_middle {
 };
 
 struct Tour {
-    short current_city;
+    int current_city;
     int stepID;
     struct step_middle *previous_step;
     double cost;
