@@ -96,10 +96,10 @@ double get_global_lower_bound(int number_of_cities, struct city *cities) {
 
 inline double compute_updated_lower_bound(double lower_bound, unsigned int source_city, unsigned int destination_city) {
     double jump_cost = get_cost_from_city_to_city(source_city, destination_city);
-    int comp_1 = jump_cost >= cities[source_city].min_cost2
+    int comp_1 = jump_cost >= cities[source_city].min_cost2;
     double ct = (comp_1) * cities[source_city].min_cost2
                 + (comp_1 == 0) * cities[source_city].min_cost;
-    int comp_2 = jump_cost >= cities[source_city].min_cost2
+    int comp_2 = jump_cost >= cities[source_city].min_cost2;
     double cf =
             (comp_2) * cities[destination_city].min_cost2 +
                     (comp_2==0) * cities[destination_city].min_cost;
