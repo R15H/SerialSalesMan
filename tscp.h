@@ -2,6 +2,7 @@
 #define UNTITLED_TSCP_H
 
 #include "queue.h"
+#include <omp.h>
 
 
 struct city {
