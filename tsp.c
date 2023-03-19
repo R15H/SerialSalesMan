@@ -96,10 +96,10 @@ double get_global_lower_bound(int number_of_cities, struct city *cities) {
 
 inline double compute_updated_lower_bound(double lower_bound, unsigned int source_city, unsigned int destination_city) {
     double jump_cost = get_cost_from_city_to_city(source_city, destination_city);
-    int comp_1 = jump_cost >= cities[source_city].min_cost2
+    int comp_1 = jump_cost >= cities[source_city].min_cost2;
     double ct = (comp_1) * cities[source_city].min_cost2
                 + (comp_1 == 0) * cities[source_city].min_cost;
-    int comp_2 = jump_cost >= cities[source_city].min_cost2
+    int comp_2 = jump_cost >= cities[source_city].min_cost2;
     double cf =
             (comp_2) * cities[destination_city].min_cost2 +
                     (comp_2==0) * cities[destination_city].min_cost;
@@ -280,20 +280,14 @@ void dealloc_data() {
     free(cities);
 }
 
-char compare_paths(struct Tour *a, struct Tour *b) {
-    // resolves which path is better (and therefore will have the higher priority)
-    // Paths with smaller costs are better
-    if (a->cost > b->cost)
-        return '\0';
-    return '\1';
-}
+
 
 int main(int argc, char *argv[]) {
     double exec_time;
     struct AlgorithmState algo_state;
     parse_inputs(argc, argv, &algo_state);
     exec_time = -omp_get_wtime();
-    algo_state.queue = queue_create((char (*)(void *, void *)) compare_paths);
+    algo_state.queue = queue_create((char (*)(void *, void *)) NULL);
     tscp(&algo_state);
 
     exec_time += omp_get_wtime();
