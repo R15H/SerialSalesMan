@@ -16,6 +16,8 @@ typedef struct
 	char (*cmpfn)(void *, void *);
 } priority_queue_t;
 
+void queue_trim(priority_queue_t *queue, double maxCost);
+
 // Create a new priority queue
 priority_queue_t *queue_create(char (*)(void *, void *));
 

@@ -12,7 +12,11 @@ static size_t parent_of(size_t i)
 
 
 void queue_trim(priority_queue_t *queue, double maxCost){
-
+    //
+    while(((struct Tour*)queue->buffer[queue->size-1])->cost >= maxCost){
+        // remove this from the queue
+        --queue->size;
+    }
 }
 
 

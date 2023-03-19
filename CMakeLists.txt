@@ -11,7 +11,7 @@ find_package(OpenMP REQUIRED)
 set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/build_releas)
 
 set(SOURCE_FILES tsp.c queue.c queue.h tscp.h)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/bin)
 
 STRING (REGEX REPLACE "/RTC(su|[1su])" "" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
 STRING (REGEX REPLACE "/RTC(su|[1su])" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
@@ -22,4 +22,4 @@ add_executable(tsp ${SOURCE_FILES})
 target_link_libraries(tsp PRIVATE OpenMP::OpenMP_C)
 
 #O3 flag
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -g  ")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2  ") #O2 goes faster
