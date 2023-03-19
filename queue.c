@@ -11,6 +11,10 @@ static size_t parent_of(size_t i)
 }
 
 
+void queue_trim(priority_queue_t *queue, double maxCost){
+
+}
+
 
 
 // Bubble-down the element to the correct position
@@ -24,7 +28,7 @@ void bubble_down(priority_queue_t *queue, size_t node)
 	
 	// Compare with the left node
 	if (left_child < queue->size &&
-            ((struct Tour*) queue->buffer[node])->cost > ((struct Tour* ) queue->buffer[left_child])->cost
+            (((struct Tour*) queue->buffer[node])->cost < ((struct Tour* ) queue->buffer[left_child])->cost)
         //compare_paths(queue->buffer[node], queue->buffer[left_child])
             )
 	{
@@ -33,7 +37,7 @@ void bubble_down(priority_queue_t *queue, size_t node)
 	
 	// Compare with the right node
 	if (right_child < queue->size &&
-            ((struct Tour*) queue->buffer[i])->cost > ((struct Tour*)(queue->buffer[right_child]))->cost
+            (((struct Tour*) queue->buffer[i])->cost < ((struct Tour*)(queue->buffer[right_child]))->cost)
 
     //compare_paths(queue->buffer[i], queue->buffer[right_child])
     )
@@ -89,7 +93,7 @@ void queue_push(priority_queue_t *queue, void* new_element)
 	// Bubble-up the new element to the correct position
 	// (i.e., compare it to the parent and then swap them if necessary)
 	while (node > 0 &&
-    ((struct Tour*)(queue->buffer[parent_of(node)]))->cost > ((struct Tour*) queue->buffer[node] )->cost)
+            (((struct Tour*)(queue->buffer[parent_of(node)]))->cost < ((struct Tour*) queue->buffer[node] )->cost))
 	{
 		size_t parent = parent_of(node);
 		SWAP(queue->buffer[node], queue->buffer[parent])
