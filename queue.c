@@ -10,15 +10,9 @@ static size_t parent_of(size_t i)
 	return (i - 1) / 2;
 }
 
-
-void queue_trim(priority_queue_t *queue, double maxCost){
-    //
-    while(((struct Tour*)queue->buffer[queue->size-1])->cost >= maxCost){
-        // remove this from the queue
-        --queue->size;
-    }
+void print_tour(struct Tour* tour){
+    printf("Cost %f\nCities visited: %d\nPrev step %p", tour->cost, tour->cities_visited, tour->previous_step);
 }
-
 
 
 // Bubble-down the element to the correct position
@@ -155,3 +149,38 @@ void queue_print(priority_queue_t* queue, FILE *fp,
 	queue_delete(queue_copy);
 	free(queue_copy);
 }
+void* remove_element(priority_queue_t *queue, size_t node)
+{
+    if (node >= queue->size) {
+        return NULL;
+    }
+
+    // Swap the node we want to remove with the root node
+    SWAP(queue->buffer[0], queue->buffer[node]);
+
+    // Remove the root node (which is now the node we want to remove)
+    void* removed_val = queue_pop(queue);
+
+    return removed_val;
+}
+
+void pq(FILE *file, struct Tour * node){
+    print_tour(node);
+}
+
+void queue_trim(priority_queue_t *queue, double maxCost){
+    //
+    //printf("Solution found, trimming the tree....\nQUEUE SIZE:%zu\n\n",queue->size);
+    int i = 1;
+    print_tour((struct Tour*)queue->buffer[i]);
+
+    //queue_print(queue, stdout, pq);
+    for(int j = 0; j< queue->size; j++){
+        if(((struct Tour*)queue->buffer[j])->cost >= maxCost){
+            free_tour(queue->buffer[j]);
+            remove_element(queue, j);
+        }
+    }
+}
+
+

@@ -22,4 +22,4 @@ add_executable(tsp ${SOURCE_FILES})
 target_link_libraries(tsp PRIVATE OpenMP::OpenMP_C)
 
 #O3 flag
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2  ") #O2 goes faster
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -Wall ") #O2 goes faster

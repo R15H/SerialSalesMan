@@ -52,4 +52,5 @@ struct AlgorithmState {
     unsigned int all_cities_visited_mask;
 };
 
+void free_tour(struct Tour *tour);
 #endif // UNTITLED_TSCP_H
