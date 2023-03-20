@@ -123,7 +123,8 @@ int shouldnt_create_tour(double cost, int current_city, struct AlgorithmState *a
            step_worst_than_found_solution;
 }
 
-void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_state, &tours_created){
+void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_state, int *tours_created){
+    int i = destination;
     if (!get_was_visited(tour, i)) {
         double new_cost = compute_updated_lower_bound(tour->cost, tour->current_city, i);
         int discard_tour = shouldnt_create_tour(new_cost, i, algo_state);
@@ -132,16 +133,18 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
             struct Tour *new_tour = go_to_city(tour, i, algo_state, new_cost);
             int finished = get_visited_all_cities(new_tour, algo_state);
             if (!finished) {
-                tours_created++;
+                (*tours_created)++;
                 queue_push(algo_state->queue, new_tour);
             } else {
-                ((struct step_middle *) new_tour)->ref_counter = 1;
                 double final_cost = compute_updated_lower_bound(new_tour->cost, i, 0);
                 int current_tour_is_better = final_cost < algo_state->solution->cost;
                 if (current_tour_is_better) {
+                    (*tours_created)++;
                     free_tour(algo_state->solution);
                     algo_state->solution = go_to_city(new_tour, 0, algo_state, final_cost);
                     queue_trim(algo_state->queue, final_cost);
+                } else {
+                    free(new_tour); // not free_tour because we only want to delete this piece, and do not wnat to look to prev step
                 }
             }
         }
@@ -151,59 +154,13 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
 int analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
     int tours_created = 0;
     int loops = algo_state->number_of_cities - 1;
-    struct Tour tours_to_free[64];
-    int free_tours = 0;
     int i = 0;
     for (; i < loops; i += 2) {
-
-
-        if (get_was_visited(tour, i + 1)) continue;
-        double new_cost = compute_updated_lower_bound(tour->cost, tour->current_city, i + 1);
-
-        int discard_tour = shouldnt_create_tour(new_cost, i + 1, algo_state);
-        if (!discard_tour) {
-            struct Tour *new_tour = go_to_city(tour, i + 1, algo_state, new_cost);
-            int finished = get_visited_all_cities(new_tour, algo_state);
-            if (finished) {
-                ((struct step_middle *) new_tour)->ref_counter = 1;
-                double final_cost = compute_updated_lower_bound(new_tour->cost, i + 1, 0);
-                int current_tour_is_better = final_cost < algo_state->solution->cost;
-                if (current_tour_is_better) {
-                    free_tour(algo_state->solution);
-                    algo_state->solution = go_to_city(new_tour, 0, algo_state, final_cost);
-                    queue_trim(algo_state->queue, final_cost);
-                }
-                continue;
-            }
-            tours_created++;
-            queue_push(algo_state->queue, new_tour);
-        }
+        visit_city(tour, i, algo_state, &tours_created);
+        visit_city(tour, i+1, algo_state, &tours_created);
     }
     if (algo_state->number_of_cities % 2 != 0) {
-        i = algo_state->number_of_cities - 1;
-        struct Tour *new_tour;
-        if (!get_was_visited(tour, i)) {
-            double new_cost = compute_updated_lower_bound(tour->cost, tour->current_city, i);
-
-            int discard_tour = shouldnt_create_tour(new_cost, i, algo_state);
-            if (discard_tour) return tours_created;
-            new_tour = go_to_city(tour, i, algo_state, new_cost);
-            int finished = get_visited_all_cities(new_tour, algo_state);
-            if (finished) {
-                ((struct step_middle *) new_tour)->ref_counter = 1;
-                double final_cost = compute_updated_lower_bound(new_tour->cost, i, 0);
-
-                int current_tour_is_better = final_cost < algo_state->solution->cost;
-                if (current_tour_is_better) {
-                    free_tour(algo_state->solution);
-                    algo_state->solution = go_to_city(new_tour, 0, algo_state, final_cost);
-                    queue_trim(algo_state->queue, final_cost);
-                }
-                return tours_created;
-            }
-            tours_created++;
-            queue_push(algo_state->queue, new_tour);
-        }
+        visit_city(tour,algo_state->number_of_cities - 1, algo_state, &tours_created);
     }
 
     return tours_created;
