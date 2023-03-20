@@ -169,16 +169,18 @@ void pq(FILE *file, struct Tour * node){
 }
 
 void queue_trim(priority_queue_t *queue, double maxCost){
-    //
-    //printf("Solution found, trimming the tree....\nQUEUE SIZE:%zu\n\n",queue->size);
-    int i = 1;
-    print_tour((struct Tour*)queue->buffer[i]);
-
-    //queue_print(queue, stdout, pq);
-    for(int j = 0; j< queue->size; j++){
+    printf("Solution found... %d", rand());
+    if(queue->size < 1000000){
+        return;
+    }
+    for(int j = queue->size/2; j< queue->size-1; j += 2){
         if(((struct Tour*)queue->buffer[j])->cost >= maxCost){
             free_tour(queue->buffer[j]);
             remove_element(queue, j);
+        }
+        if(((struct Tour*)queue->buffer[j+1])->cost >= maxCost){
+            free_tour(queue->buffer[j+1]);
+            remove_element(queue, j+1);
         }
     }
 }
