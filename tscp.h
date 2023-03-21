@@ -21,6 +21,7 @@ unsigned int all_cities_visited_mask;
 struct step_middle {
     int current_city;
     int stepID;
+    int nr_visited;
     struct step_middle *previous_step;
     omp_lock_t decrease_counter_lock; // 8 bytes, replaces cost
     unsigned int ref_counter; // nr of paths it belongs to
@@ -29,6 +30,7 @@ struct step_middle {
 struct Tour {
     int current_city;
     int stepID;
+    int nr_visited;
     struct step_middle *previous_step;
     double cost;
     unsigned int cities_visited; // bit map of the cities visited
