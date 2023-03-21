@@ -2,8 +2,8 @@
 #include <omp.h>
 #include <string.h>
 #include <assert.h>
+#include <math.h>
 #include "tscp.h"
-#include "queue.h"
 #include <stdlib.h>
 
 #define ERROR(message) fprintf(stderr, #message);
@@ -18,6 +18,230 @@
 #define DOUBLE_MAX 1.7976931348623155e+308
 
 #pragma runtime_checks("", off)
+
+
+
+#define REALLOC_SIZE 1024
+#define SWAP(x, y) void* tmp = x; x = y; y = tmp;
+
+double deviation = 0;
+// Return the index of the parent node
+static size_t parent_of(size_t i)
+{
+    return (i - 1) / 2;
+}
+
+void print_tour(struct Tour* tour){
+    printf("Cost %f\nCities visited: %d\nPrev step %p", tour->cost, tour->cities_visited, tour->previous_step);
+}
+
+
+inline int compare_paths(struct Tour * path1, struct Tour* path2){
+
+    return path1->cost < path2->cost;
+    //return (path1)->cost + (-path1->nr_visited + path2->nr_visited)* deviation < ((struct Tour*) path2)->cost;
+}
+
+
+// Bubble-down the element to the correct position
+// (i.e., compare it to its child and then swap them if necessary).
+// Assume that all the elements in the subtree is already sorted.
+void bubble_down(priority_queue_t *queue, size_t node)
+{
+    size_t left_child = 2 * node + 1;
+    size_t right_child = 2 * node + 2;
+    size_t i = node;
+
+    // Compare with the left node
+    if (left_child < queue->size && compare_paths(queue->buffer[node], queue->buffer[left_child])
+        //compare_paths(queue->buffer[node], queue->buffer[left_child])
+            )
+    {
+        i = left_child;
+    }
+
+    // Compare with the right node
+    if (right_child < queue->size && compare_paths(queue->buffer[i], queue->buffer[right_child])
+       // (((struct Tour*) queue->buffer[i])->cost < ((struct Tour*)(queue->buffer[right_child]))->cost)
+
+        //compare_paths(queue->buffer[i], queue->buffer[right_child])
+            )
+    {
+        i = right_child;
+    }
+
+    // If node is not in the correct position, swap and then sort the subtree
+    if (i != node)
+    {
+        SWAP(queue->buffer[i], queue->buffer[node])
+        bubble_down(queue, i);
+    }
+}
+
+// Create a new priority queue
+priority_queue_t *queue_create(char (*cmp)(void *, void *))
+{
+    priority_queue_t *queue;
+
+    queue = malloc(sizeof(priority_queue_t));
+
+    queue->buffer = malloc(REALLOC_SIZE * sizeof(void*));
+    queue->max_size = REALLOC_SIZE;
+    queue->size = 0;
+    queue->cmpfn = cmp;
+
+    return queue;
+}
+
+// Delete the priority queue
+void queue_delete(priority_queue_t *queue)
+{
+    queue->size = -1;
+    queue->max_size = -1;
+    free(queue->buffer);
+}
+
+// Insert a new element in the queue and then sort its contents.
+void queue_push(priority_queue_t *queue, void* new_element)
+{
+    // Reallocate buffer if necessary
+    if (queue->size + 1 > queue->max_size)
+    {
+        queue->max_size += REALLOC_SIZE;
+        queue->buffer = realloc(queue->buffer, queue->max_size * sizeof(void*));
+    }
+
+    // Insert the new_element at the end of the buffer
+    size_t node = queue->size;
+    queue->buffer[queue->size++] = new_element;
+
+    // Bubble-up the new element to the correct position
+    // (i.e., compare it to the parent and then swap them if necessary)
+    while (node > 0 &&
+    compare_paths(queue->buffer[node], queue->buffer[parent_of(node)])
+            )
+
+    {
+        size_t parent = parent_of(node);
+        SWAP(queue->buffer[node], queue->buffer[parent])
+        node = parent;
+    }
+}
+
+// Return the element with the lowest value in the queue, after removing it.
+void* queue_pop(priority_queue_t *queue)
+{
+    if(queue->size == 0)
+        return NULL;
+
+    // Stores the lowest element in a temporary
+    void* top_val = queue->buffer[0];
+
+    // Put the last element in the queue in the front.
+    queue->buffer[0] = queue->buffer[queue->size - 1];
+
+    // Remove the duplicated element in the back.
+    --queue->size;
+
+    // Sort the queue based on the value of the nodes.
+    bubble_down(queue, 0);
+
+    return top_val;
+}
+
+// Duplicate queue
+priority_queue_t *queue_duplicate(priority_queue_t* queue)
+{
+    priority_queue_t *other;
+    other = malloc(sizeof(priority_queue_t));
+    other->max_size = queue->max_size;
+    other->size = queue->size;
+    other->cmpfn = queue->cmpfn;
+    other->buffer = malloc(queue->max_size * sizeof(void*));
+    memcpy(other->buffer, queue->buffer, queue->max_size * sizeof(void*));
+
+    return other;
+}
+
+// Print the contents of the priority queue
+void queue_print(priority_queue_t* queue, FILE *fp,
+                 void (*print_node)(FILE *, void*))
+{
+    priority_queue_t *queue_copy = queue_duplicate(queue);
+
+    while (queue_copy->size > 0)
+    {
+        void* node = queue_pop(queue_copy);
+        print_node(fp, node);
+    }
+
+    queue_delete(queue_copy);
+    free(queue_copy);
+}
+void* remove_element(priority_queue_t *queue, size_t node)
+{
+    if (node >= queue->size) {
+        return NULL;
+    }
+
+    // Swap the node we want to remove with the root node
+    SWAP(queue->buffer[0], queue->buffer[node]);
+
+    // Remove the root node (which is now the node we want to remove)
+    void* removed_val = queue_pop(queue);
+
+    return removed_val;
+}
+
+void pq(FILE *file, struct Tour * node){
+    print_tour(node);
+}
+
+void queue_trim(priority_queue_t *queue, double maxCost){
+    printf("Solution found... %d", rand());
+    if(queue->size < 1000000){
+        return;
+    }
+    for(int j = queue->size/2; j< queue->size-1; j += 2){
+        if(((struct Tour*)queue->buffer[j])->cost >= maxCost){
+            free_tour(queue->buffer[j]);
+            remove_element(queue, j);
+        }
+        if(((struct Tour*)queue->buffer[j+1])->cost >= maxCost){
+            free_tour(queue->buffer[j+1]);
+            remove_element(queue, j+1);
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 union step *get_clean_step() {
     return malloc(sizeof(union step));
@@ -110,6 +334,7 @@ inline struct Tour *go_to_city(struct Tour *tour, short city_id, struct Algorith
     // create a new tour and convert the current tour to a step middle
     struct Tour *new_tour = (struct Tour *) get_clean_step();
     new_tour->current_city = city_id;
+    new_tour->nr_visited = tour->nr_visited + 1;
     new_tour->cities_visited = tour->cities_visited | binary_masks[city_id];
     new_tour->cost = cost;
     new_tour->previous_step = (struct step_middle *) tour;
@@ -151,7 +376,7 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
     }
 }
 
-int analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
+inline int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
     int tours_created = 0;
     int loops = algo_state->number_of_cities - 1;
     int i = 0;
@@ -193,6 +418,7 @@ void tscp(struct AlgorithmState *algo_state) {
     }
 }
 
+double average_cost = 0;
 
 void place_cost_in_city(int city_source, int city_destination, double cost, int number_of_cities) {
     struct city *current_city = &cities[city_source];
@@ -240,13 +466,24 @@ void parse_inputs(int argc, char **argv, struct AlgorithmState *algo_state) {
 
     algo_state->all_cities_visited_mask = all_cities_visited_mask;
 
+    double road_cost[algo_state->number_of_roads];
+    int number_of_roads_read = 0;
     while (fgets(buffer, 1024, cities_fp) != NULL) {
         int city_number = atoi(strtok(buffer, " "));
         int city_destination = atoi(strtok(NULL, " "));
         double city_cost = strtod(strtok(NULL, " "), NULL);
         place_cost_in_city(city_number, city_destination, city_cost, algo_state->number_of_cities);
         place_cost_in_city(city_destination, city_number, city_cost, algo_state->number_of_cities);
+        average_cost += city_cost;
+        road_cost[number_of_roads_read++] = city_cost;
     }
+    // compute the standard variance of the costs
+    average_cost = average_cost/number_of_roads_read;
+    for (int i = 0; i < number_of_roads_read; ++i) {
+        deviation += (road_cost[i] - average_cost) * (road_cost[i] - average_cost);
+    }
+    deviation = sqrt(deviation/number_of_roads_read);
+
     fclose(cities_fp);
 }
 
