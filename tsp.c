@@ -299,10 +299,13 @@ void print_result(struct AlgorithmState *algo_state) {
 
 void free_step(struct step_middle *step) {
     if (step == NULL)return;
-    step->ref_counter--;
-    if (step->ref_counter <= 0) {
-        free_step(step->previous_step);
-        free(step);
+#pragma omp single
+    {
+        step->ref_counter--;
+        if (step->ref_counter <= 0) {
+            free_step(step->previous_step);
+            free(step);
+        }
     }
 }
 
