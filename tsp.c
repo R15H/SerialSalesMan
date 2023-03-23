@@ -376,6 +376,58 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
     }
 }
 
+
+#define MAX_THREADS 16
+#define PAD 8
+
+inline int  parallel_queue(struct Tour *tour, struct AlgorithmState *algo_state) {
+
+    omp_lock_t lock;
+    omp_init_lock(&lock);
+
+    int loops = algo_state->number_of_cities - 1;
+    struct AlgorithmState queue_array[MAX_THREADS][PAD];
+    int tours_created_out = 0;
+
+    printf("%d\n",*algo_state->queue);
+    printf("%d\n",algo_state->queue);
+    printf("%d\n",&algo_state->queue);
+
+
+    for (int i = 0;i<=MAX_THREADS;i++){
+        queue_array[i][0] = *algo_state;
+    }
+    printf("%d\n",queue_array[0][0]);
+    omp_set_num_threads(MAX_THREADS);
+    printf("Starting Parallel \n");
+    #pragma omp parallel
+    {
+    int id = omp_get_thread_num();
+    //printf("ID:%d\n",id);
+	int numthreads = omp_get_num_threads();
+    int tours_created = 0;
+
+    for (int j = 0; j <= loops; j = j+id) {
+        printf("ID:%d\nJ=%d\n",id,j);
+        visit_city(tour, j, &queue_array[id][0], &tours_created);
+    }
+    printf("ID:%d Tours:%d \n",id,tours_created);
+    omp_set_lock(&lock);
+    tours_created_out = tours_created;
+    omp_unset_lock(&lock);
+
+    }
+    omp_destroy_lock(&lock);
+    return tours_created_out;
+}
+
+
+
+
+
+
+
+
 inline int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
     int tours_created = 0;
     int loops = algo_state->number_of_cities - 1;
@@ -409,6 +461,7 @@ void tscp(struct AlgorithmState *algo_state) {
 
     struct Tour *current_tour;
     while ((current_tour = queue_pop(algo_state->queue))) {
+        int test = parallel_queue(current_tour, algo_state);
         int newToursCreated = analyseTour(current_tour, algo_state);
         if (newToursCreated == 0) {
             free_tour(current_tour);
