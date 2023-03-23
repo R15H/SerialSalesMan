@@ -245,7 +245,6 @@ void queue_trim(priority_queue_t *queue, double maxCost){
 
 
 union step *get_clean_step() {
-    
     return malloc(sizeof(union step));
 }
 
@@ -367,12 +366,13 @@ inline void visit_city(struct Tour *tour,int destination, struct AlgorithmState 
                 int current_tour_is_better = final_cost < algo_state->solution->cost;
                 if (current_tour_is_better) {
                     (*tours_created)++;
-#pragma omp task limpador
+#pragma omp task if(omp_get_thread_num() == 0) priority(1000)
                     free_tour(algo_state->solution);
                     algo_state->solution = go_to_city(new_tour, 0, algo_state, final_cost);
-                    queue_trim(algo_state->queue, final_cost);
-                } else {
-#pragma omp task limpador
+                    queue_trim(algo_state->queue, final_cost); // REMOVE QUEUE TRIM
+                } else
+#pragma omp task if(omp_get_thread_num() == 0) priority(1000)
+                {
                     free(new_tour); // not free_tour because we only want to delete this piece, and do not wnat to look to prev step
                 }
             }
@@ -402,54 +402,77 @@ inline int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
 
 struct AlgorithmState thread_states[NR_OF_THREADS];
 
-void execute_load(priority_queue_t qs[], struct AlgorithmState *algo_state) {
+void basic_queue_merge(priority_queue_t *newQueue, priority_queue_t *queue1){
+
+    struct Tour *current_tour;
+    while ((current_tour = queue_pop(queue1))) {
+        queue_push(newQueue, current_tour);
+    }
+    //queue_delete(queue1);
+}
+
+void execute_load(priority_queue_t *qs[], struct AlgorithmState *algo_state) {
     // Launches a thread for each of the queues. Each thread executes X amount of tours untils it exits
     // for loop for each of the queues and execute them in parallel using omp directive
 
-#pragma omp parallel
+#pragma omp parallel default(shared) shared(cities)
     {
         int thread_id = omp_get_thread_num();
         int thread_runs = 0;
-#pragma omp parallel for private(thread_id) shared(thread_runs)
+#pragma omp parallel for private(thread_id) default(shared)
 
-        for(int i =0; i < NR_OF_THREADS; i++){
+        for (int i = 0; i < NR_OF_THREADS; i++) {
             struct Tour *current_tour;
-            while ((current_tour = queue_pop(qs[thread_id]) )) {
-                int newToursCreated = analyseTour(current_tour, thread_states[thread_id]);
+            while ((current_tour = queue_pop(qs[thread_id]))) {
+                int newToursCreated = analyseTour(current_tour, &thread_states[thread_id]);
                 if (newToursCreated == 0) {
                     free_tour(current_tour);
                     continue;
                 }
                 ((struct step_middle *) current_tour)->ref_counter = newToursCreated;
-                if(thread_runs++ > 20000) break;
+                if (thread_runs++ > 20000) break;
+            }
         }
+
     }
-
-
-
 }
 
+struct Tour * copy_tour(struct Tour *tour){
+    struct Tour *new_tour = (struct Tour *) get_clean_step();
+    new_tour->current_city = tour->current_city;
+    new_tour->nr_visited = tour->nr_visited;
+    new_tour->cities_visited = tour->cities_visited;
+    new_tour->cost = tour->cost;
+    new_tour->previous_step = (struct step_middle *) tour;
+    return new_tour;
+}
 
-void sync_q(priority_queue_t *queue, priority_queue_t qs[]) {
-    // TODO
+void sync_q(priority_queue_t *global_queue, priority_queue_t *qs[], struct AlgorithmState *global_state) {
+
     int i = 0;
-    while (i < NR_OF_THREADS) {
-        if (queue->size > 0) {
-            struct Tour *current_tour = queue_pop(queue);
-            analyseTour(current_tour, algo_state);
-        } else {
-            i++;
+    for(int j=0; j<NR_OF_THREADS; j++){
+        basic_queue_merge(global_queue, qs[i]);
+        // find the best solution in each thread and compare with the global best solution
+
+
+        if(thread_states[i].solution->cost < global_state->solution->cost){
+            free_tour(global_state->solution);
+            global_state->solution = thread_states[i].solution;
         }
+    }
+    for(int j=0; j<NR_OF_THREADS; j++){
+        // copy the best solution to each thread
+        thread_states[j].solution = copy_tour(global_state->solution);
     }
 }
 
-void distribute_load(priority_queue_t *global, priority_queue_t qs[], int number_of_cities) {
+void distribute_load(priority_queue_t *global, priority_queue_t *qs[], int number_of_cities) {
     int atual = 0;
     for (int i = 0; i < number_of_cities; i++) {
         if (++atual / NR_OF_THREADS == 0) atual = 0; // fazer zig zag depois
         struct Tour *tour = queue_pop(global);
         if (!tour) break;
-        queue_push(&qs[atual], tour);
+        queue_push(qs[atual], tour);
     }
 }
 
@@ -468,7 +491,7 @@ void tscp(struct AlgorithmState *global_algo_state) {
     first_step->previous_step = NULL;
 
     analyseTour(first_step, global_algo_state);
-    priority_queue_t queues[NR_OF_THREADS];
+    priority_queue_t *queues[NR_OF_THREADS];
     for(int i=0; i < NR_OF_THREADS; i++) {
         thread_states[i].queue = queue_create((char (*)(void *, void *)) NULL);
         queues[i] = thread_states[i].queue;
@@ -486,12 +509,13 @@ void tscp(struct AlgorithmState *global_algo_state) {
 
 
     while(1) {
-        distribute_load(global_algo_state->queue, &queues, global_algo_state->number_of_cities);
-        execute_load(&queues, global_algo_state)
-        if(sync_q(global_algo_state, &queues)) break;
+        distribute_load(global_algo_state->queue, queues, global_algo_state->number_of_cities);
+        execute_load(queues, global_algo_state);
+        sync_q(global_algo_state->queue, queues, global_algo_state);
+        if(global_algo_state->queue->size == 0) break;
     }
 
-};
+}
 
 
 double average_cost = 0;
@@ -531,7 +555,7 @@ void parse_inputs(int argc, char **argv, struct AlgorithmState *algo_state) {
     }
     fgets((char *) &buffer, 1024, cities_fp);
     algo_state->number_of_cities = atoi(strtok(buffer, " "));
-    cities = calloc(algo_state->number_of_cities, sizeof(struct city));
+    //cities = calloc(algo_state->number_of_cities, sizeof(struct city));
     algo_state->number_of_roads = atoi(strtok(NULL, " "));
 
     all_cities_visited_mask = 0;
