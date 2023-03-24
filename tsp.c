@@ -36,7 +36,7 @@ static size_t parent_of(size_t i) {
 }
 
 void print_tour(struct Tour *tour) {
-    printf("Cost %f\nCities visited: %d\nPrev step %p", tour->cost, tour->cities_visited, tour->previous_step);
+    //printf("Cost %f\nCities visited: %d\nPrev step %p", tour->cost, tour->cities_visited, tour->previous_step);
 }
 
 
@@ -208,7 +208,7 @@ void queue_trim(priority_queue_t *queue, double maxCost) {
 
 
 union step *get_clean_step() {
-    return malloc(sizeof(union step));
+    return calloc(1,sizeof(struct Tour));
 }
 
 
@@ -240,6 +240,7 @@ int power2(int x, unsigned int y) {
 }
 
 void print_result(struct AlgorithmState *algo_state) {
+    /*
     if (algo_state->solution->cost == INFINITY_COST) {
         printf("NO SOLUTION");
         return;
@@ -258,8 +259,10 @@ void print_result(struct AlgorithmState *algo_state) {
     }
     for (int i = 0; i < cities_visited - 1; i++) printf("%d ", values[i]);
     printf("0 \n");
+    */
 }
 
+/*
 void free_step(struct step_middle *step) {
     if (step == NULL)return;
     {
@@ -270,6 +273,7 @@ void free_step(struct step_middle *step) {
         }
     }
 }
+*/
 
 // max threads 10, max tours 1000
 
@@ -283,12 +287,7 @@ void safe_free_tour(struct Tour *tour) {
 
 void free_tour(struct Tour *tour) {
     if (tour == NULL) return;
-#pragma omp critical(free_memory)
-    {
-        struct step_middle *step = tour->previous_step;
-        free_step(step);
-        free(tour);
-    }
+    free(tour);
 }
 
 double get_global_lower_bound(int number_of_cities, struct city *cities) {
@@ -309,14 +308,20 @@ inline double compute_updated_lower_bound(double lower_bound,  int source_city, 
     return lower_bound + jump_cost - (ct + cf) / 2;
 }
 
-inline struct Tour *go_to_city(struct Tour *tour, short city_id, struct AlgorithmState *algo_state, double cost) {
+struct Tour *go_to_city(struct Tour *tour, short city_id, struct AlgorithmState *algo_state, double cost) {
     // create a new tour and convert the current tour to a step middle
-    struct Tour *new_tour = (struct Tour *) get_clean_step();
+    struct Tour *new_tour;
+#pragma omp critical
+    {
+        new_tour = (struct Tour *) get_clean_step();
+    }
+
     new_tour->current_city = city_id;
     new_tour->nr_visited = tour->nr_visited + 1;
     new_tour->cities_visited = tour->cities_visited | binary_masks[city_id];
     new_tour->cost = cost;
-    new_tour->previous_step = (struct step_middle *) tour;
+    memcpy(new_tour->citiesVisited, tour->citiesVisited,  sizeof(short)*tour->nr_visited);
+    new_tour->citiesVisited[new_tour->cities_visited] = city_id;
     return new_tour;
 }
 
@@ -411,18 +416,19 @@ void execute_load() {
             free_tour(current_tour);
             continue;
         }
-        ((struct step_middle *) current_tour)->ref_counter = newToursCreated;
         if (thread_runs++ > 1000) break;
     }
 }
 
 struct Tour *copy_tour(struct Tour *tour) {
-    struct Tour *new_tour = (struct Tour *) get_clean_step();
+    struct Tour *new_tour;
+#pragma omp critical
+    new_tour = (struct Tour *) get_clean_step();
     new_tour->current_city = tour->current_city;
     new_tour->nr_visited = tour->nr_visited;
     new_tour->cities_visited = tour->cities_visited;
     new_tour->cost = tour->cost;
-    new_tour->previous_step = (struct step_middle *) tour;
+    //new_tour->citiesVisited = tour->citiesVisited;
     return new_tour;
 }
 
@@ -472,14 +478,12 @@ void tscp(struct AlgorithmState *global_algo_state) {
             global_algo_state->solution->cost = 100000000;
             global_algo_state->solution->cities_visited = global_algo_state->all_cities_visited_mask;
             global_algo_state->solution->current_city = 0;
-            global_algo_state->solution->previous_step = NULL;
             global_algo_state->solution->nr_visited = global_algo_state->number_of_cities;
 
             struct Tour *first_step = (struct Tour *) get_clean_step();
             first_step->current_city = 0;
             first_step->cities_visited = 1;
             first_step->cost = get_global_lower_bound(global_algo_state->number_of_cities, cities);
-            first_step->previous_step = NULL;
             first_step->nr_visited = 1;
 
             analyseTour(first_step, global_algo_state);
@@ -491,7 +495,6 @@ void tscp(struct AlgorithmState *global_algo_state) {
         thread_states[i].solution->cost = 100000000;
         thread_states[i].solution->cities_visited = global_algo_state->all_cities_visited_mask;
         thread_states[i].solution->current_city = 0;
-        thread_states[i].solution->previous_step = NULL;
         thread_states[i].solution->nr_visited = global_algo_state->number_of_cities;
 
 
