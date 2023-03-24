@@ -340,12 +340,11 @@ inline void visit_city(struct Tour *tour, int destination, struct AlgorithmState
                 if (current_tour_is_better) {
                     (*tours_created)++;
 //#pragma omp task if(omp_get_thread_num() == 0) priority(1000)
-//#pragma omp master
-                    //free_tour(algo_state->solution);
+#pragma omp master
+                    free_tour(algo_state->solution);
                     algo_state->solution = go_to_city(new_tour, 0, algo_state, final_cost);
                     queue_trim(algo_state->queue, final_cost); // REMOVE QUEUE TRIM
                 } else
-//#pragma omp task if(omp_get_thread_num() == 0) priority(1000)
                 {
                     free(new_tour); // not free_tour because we only want to delete this piece, and do not wnat to look to prev step
                 }
@@ -448,7 +447,7 @@ void distribute_load(priority_queue_t *global, int number_of_cities) {
 
 
 void tscp(struct AlgorithmState *global_algo_state) {
-#pragma omp parallel num_threads(10) shared(thread_states)
+#pragma omp parallel num_threads(10) shared(thread_states, binary_masks, cities)
     {
 
 #pragma omp single
@@ -484,6 +483,7 @@ void tscp(struct AlgorithmState *global_algo_state) {
                 thread_states[i].number_of_cities = global_algo_state->number_of_cities; // TODO
                 thread_states[i].all_cities_visited_mask = global_algo_state->all_cities_visited_mask; // TODO
                 thread_states[i].max_lower_bound = global_algo_state->max_lower_bound; // TODO --> estas tralhas meter numa var que é readonly pra todas as gajs
+
             }
             distribute_load(global_algo_state->queue, global_algo_state->number_of_cities);
         }
@@ -586,8 +586,6 @@ void dealloc_data() {
 
 double exec_time;
 void program_exit(struct AlgorithmState * algo_state){
-#pragma omp barrier
-#pragma omp single
     {
     exec_time += omp_get_wtime();
     fprintf(stderr, "%.1fs\n", exec_time);
