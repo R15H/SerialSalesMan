@@ -258,7 +258,6 @@ void print_result(struct AlgorithmState *algo_state) {
 
 void free_step(struct step_middle *step) {
     if (step == NULL)return;
-#pragma omp single
     {
         step->ref_counter--;
         if (step->ref_counter <= 0) {
@@ -266,6 +265,16 @@ void free_step(struct step_middle *step) {
             free(step);
         }
     }
+}
+
+// max threads 10, max tours 1000
+
+struct Tour *toDelete[10][1000];
+int deleteIndex[10];
+
+void safe_free_tour(struct Tour *tour) {
+    toDelete[omp_get_thread_num()][deleteIndex[omp_get_thread_num()]++] = tour;
+    if(deleteIndex[omp_get_thread_num()] > 1000) printf("EXCEEDED MAX DELETABLE TOURS!\n");
 }
 
 void free_tour(struct Tour *tour) {
@@ -328,12 +337,13 @@ inline void visit_city(struct Tour *tour, int destination, struct AlgorithmState
                 int current_tour_is_better = final_cost < algo_state->solution->cost;
                 if (current_tour_is_better) {
                     (*tours_created)++;
-#pragma omp task if(omp_get_thread_num() == 0) priority(1000)
+//#pragma omp task if(omp_get_thread_num() == 0) priority(1000)
+#pragma omp master
                     free_tour(algo_state->solution);
                     algo_state->solution = go_to_city(new_tour, 0, algo_state, final_cost);
                     queue_trim(algo_state->queue, final_cost); // REMOVE QUEUE TRIM
                 } else
-#pragma omp task if(omp_get_thread_num() == 0) priority(1000)
+//#pragma omp task if(omp_get_thread_num() == 0) priority(1000)
                 {
                     free(new_tour); // not free_tour because we only want to delete this piece, and do not wnat to look to prev step
                 }
@@ -383,11 +393,12 @@ void execute_load(struct AlgorithmState *algo_state) {
     while ((current_tour = queue_pop(thread_states[thread_id].queue))) {
         int newToursCreated = analyseTour(current_tour, &thread_states[thread_id]);
         if (newToursCreated == 0) {
+#pragma omp master
             free_tour(current_tour);
             continue;
         }
         ((struct step_middle *) current_tour)->ref_counter = newToursCreated;
-        if (thread_runs++ > 20000) break;
+        if (thread_runs++ > 1000) break;
     }
 }
 
@@ -435,7 +446,7 @@ void distribute_load(priority_queue_t *global, int number_of_cities) {
 
 
 void tscp(struct AlgorithmState *global_algo_state) {
-#pragma omp parallel num_threads(1) shared(thread_states)
+#pragma omp parallel num_threads(10) shared(thread_states)
     {
 
 #pragma omp master
@@ -473,26 +484,18 @@ void tscp(struct AlgorithmState *global_algo_state) {
 
 #pragma omp master
         distribute_load(global_algo_state->queue, global_algo_state->number_of_cities);
-#pragma omp barrier
-        execute_load(global_algo_state);
 
-        /*
         while (1) {
 #pragma omp barrier
             execute_load(global_algo_state);
-
-#pragma omp barrier
 #pragma omp master
             {
                 sync_q(global_algo_state->queue, global_algo_state);
-                if (global_algo_state->queue->size != 0)
-                    distribute_load(global_algo_state->queue, global_algo_state->number_of_cities);
             }
             if (global_algo_state->queue->size == 0) break;
+#pragma omp master
+                    distribute_load(global_algo_state->queue, global_algo_state->number_of_cities);
         }
-         */
-
-
     }
 
 }
