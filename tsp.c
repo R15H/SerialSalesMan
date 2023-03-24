@@ -28,6 +28,7 @@ int nr_of_threads;
 #define SWAP(x, y) void* tmp = x; x = y; y = tmp;
 
 double deviation = 0;
+#define INFINITY_COST 100000000
 
 // Return the index of the parent node
 static size_t parent_of(size_t i) {
@@ -237,7 +238,7 @@ int power2(int x, unsigned int y) {
 }
 
 void print_result(struct AlgorithmState *algo_state) {
-    if (algo_state->solution == NULL) {
+    if (algo_state->solution->cost == INFINITY_COST) {
         printf("NO SOLUTION");
         return;
     }
@@ -473,7 +474,7 @@ void tscp(struct AlgorithmState *global_algo_state) {
             for (int i = 0; i < nr_of_threads; i++) {
                 thread_states[i].queue = queue_create((char (*)(void *, void *)) NULL);
                 thread_states[i].solution = (struct Tour *) get_clean_step();
-                thread_states[i].solution->cost = 100000000;
+                thread_states[i].solution->cost = INFINITY_COST;
                 thread_states[i].solution->cities_visited = global_algo_state->all_cities_visited_mask;
                 thread_states[i].solution->current_city = 0;
                 thread_states[i].solution->previous_step = NULL;
