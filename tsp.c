@@ -16,6 +16,7 @@
 #define MESSAGE(message, ...)
 #endif
 
+void program_exit(struct AlgorithmState * algo_state);
 #define DOUBLE_MAX 1.7976931348623155e+308
 
 #pragma runtime_checks("", off)
@@ -338,8 +339,8 @@ inline void visit_city(struct Tour *tour, int destination, struct AlgorithmState
                 if (current_tour_is_better) {
                     (*tours_created)++;
 //#pragma omp task if(omp_get_thread_num() == 0) priority(1000)
-#pragma omp master
-                    free_tour(algo_state->solution);
+//#pragma omp master
+                    //free_tour(algo_state->solution);
                     algo_state->solution = go_to_city(new_tour, 0, algo_state, final_cost);
                     queue_trim(algo_state->queue, final_cost); // REMOVE QUEUE TRIM
                 } else
@@ -387,14 +388,14 @@ void execute_load(struct AlgorithmState *algo_state) {
     // Launches a thread for each of the queues. Each thread executes X amount of tours untils it exits
     // for loop for each of the queues and execute them in parallel using omp directive
     int thread_id = omp_get_thread_num();
-    printf("Thread %d started", thread_id);
+    //printf("Thread %d started", thread_id);
     int thread_runs = 0;
     struct Tour *current_tour;
     while ((current_tour = queue_pop(thread_states[thread_id].queue))) {
         int newToursCreated = analyseTour(current_tour, &thread_states[thread_id]);
         if (newToursCreated == 0) {
-#pragma omp master
-            free_tour(current_tour);
+//#pragma omp master
+            //free_tour(current_tour);
             continue;
         }
         ((struct step_middle *) current_tour)->ref_counter = newToursCreated;
@@ -438,7 +439,7 @@ void distribute_load(priority_queue_t *global, int number_of_cities) {
     int distributed_tours = nr_of_threads* 30;
     for (int i = 0; i < distributed_tours; i++) {
         if (atual++ >= nr_of_threads) atual = 1; // fazer zig zag depois
-        struct Tour *tour = queue_pop(global);
+        struct Tour *tour = queue_pop(global); // NOTA: tiramos os 100 tours melhores de cada thread e injetamos os 30 melhores para cada uma (assim nao temo sque percorrer as queues todas!)
         if (!tour) break;
         queue_push(thread_states[atual-1].queue, tour);
     }
@@ -449,7 +450,7 @@ void tscp(struct AlgorithmState *global_algo_state) {
 #pragma omp parallel num_threads(10) shared(thread_states)
     {
 
-#pragma omp master
+#pragma omp single
         {
             thread_states = calloc(omp_get_num_threads(), sizeof(struct AlgorithmState)); // TODO: free this
             int nr_of_threads = omp_get_num_threads();
@@ -459,12 +460,14 @@ void tscp(struct AlgorithmState *global_algo_state) {
             global_algo_state->solution->cities_visited = global_algo_state->all_cities_visited_mask;
             global_algo_state->solution->current_city = 0;
             global_algo_state->solution->previous_step = NULL;
+            global_algo_state->solution->nr_visited = global_algo_state->number_of_cities;
 
             struct Tour *first_step = (struct Tour *) get_clean_step();
             first_step->current_city = 0;
             first_step->cities_visited = 1;
             first_step->cost = get_global_lower_bound(global_algo_state->number_of_cities, cities);
             first_step->previous_step = NULL;
+            first_step->nr_visited = 1;
 
             analyseTour(first_step, global_algo_state);
             for (int i = 0; i < nr_of_threads; i++) {
@@ -474,28 +477,32 @@ void tscp(struct AlgorithmState *global_algo_state) {
                 thread_states[i].solution->cities_visited = global_algo_state->all_cities_visited_mask;
                 thread_states[i].solution->current_city = 0;
                 thread_states[i].solution->previous_step = NULL;
+                thread_states[i].solution->nr_visited = global_algo_state->number_of_cities;
 
 
                 thread_states[i].number_of_cities = global_algo_state->number_of_cities; // TODO
                 thread_states[i].all_cities_visited_mask = global_algo_state->all_cities_visited_mask; // TODO
                 thread_states[i].max_lower_bound = global_algo_state->max_lower_bound; // TODO --> estas tralhas meter numa var que é readonly pra todas as gajs
             }
+            distribute_load(global_algo_state->queue, global_algo_state->number_of_cities);
         }
 
-#pragma omp master
-        distribute_load(global_algo_state->queue, global_algo_state->number_of_cities);
 
         while (1) {
-#pragma omp barrier
             execute_load(global_algo_state);
-#pragma omp master
+#pragma omp barrier
+#pragma omp single
             {
                 sync_q(global_algo_state->queue, global_algo_state);
             }
+#pragma omp barrier
             if (global_algo_state->queue->size == 0) break;
-#pragma omp master
+#pragma omp barrier
+#pragma omp single
                     distribute_load(global_algo_state->queue, global_algo_state->number_of_cities);
+#pragma omp barrier
         }
+#pragma omp barrier
     }
 
 }
@@ -576,8 +583,20 @@ void dealloc_data() {
 
 // declare global variables as shared by all threads
 
+double exec_time;
+void program_exit(struct AlgorithmState * algo_state){
+#pragma omp barrier
+#pragma omp single
+    {
+    exec_time += omp_get_wtime();
+    fprintf(stderr, "%.1fs\n", exec_time);
+    print_result(algo_state);
+    queue_delete(algo_state->queue);
+    dealloc_data();
+}
+}
+
 int main(int argc, char *argv[]) {
-    double exec_time;
     struct AlgorithmState algo_state;
     parse_inputs(argc, argv, &algo_state);
     exec_time = -omp_get_wtime();
@@ -586,11 +605,8 @@ int main(int argc, char *argv[]) {
 
     nr_of_threads = omp_get_max_threads();
     printf("Number of threads: %d", nr_of_threads);
+    program_exit(&algo_state);
 
-    exec_time += omp_get_wtime();
-    fprintf(stderr, "%.1fs\n", exec_time);
-    print_result(&algo_state);
-    queue_delete(algo_state.queue);
-    dealloc_data();
+
     return 0;
 }
