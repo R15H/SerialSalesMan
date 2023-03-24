@@ -8,7 +8,6 @@
 
 #define ERROR(message) fprintf(stderr, #message);
 
-#define OMP_NUM_THREADS nr_of_threads
 #ifdef DEBUG
 #define MESSAGE(message, ...) printf(stderr, message, __VA_ARGS__)
 #else
@@ -16,7 +15,8 @@
 #define MESSAGE(message, ...)
 #endif
 
-void program_exit(struct AlgorithmState * algo_state);
+void program_exit(struct AlgorithmState *algo_state);
+
 #define DOUBLE_MAX 1.7976931348623155e+308
 
 #pragma runtime_checks("", off)
@@ -28,7 +28,6 @@ int nr_of_threads;
 #define SWAP(x, y) void* tmp = x; x = y; y = tmp;
 
 double deviation = 0;
-#define INFINITY_COST 100000000
 
 // Return the index of the parent node
 static size_t parent_of(size_t i) {
@@ -187,7 +186,8 @@ void pq(FILE *file, struct Tour *node) {
 }
 
 void queue_trim(priority_queue_t *queue, double maxCost) {
-    printf("Solution found... %d", rand());
+    //printf("Solution found... %d", rand());
+    //queue_print(queue, stdout, (void (*)(FILE *, void *)) pq);
     for (int j = queue->size / 2; j < queue->size - 1; j += 2) {
         if(queue->size == 0) {
             return; // -1 on this dude does overflow
@@ -240,7 +240,7 @@ int power2(int x, unsigned int y) {
 }
 
 void print_result(struct AlgorithmState *algo_state) {
-    if (algo_state->solution->cost == INFINITY_COST) {
+    if (algo_state->solution == NULL) {
         printf("NO SOLUTION");
         return;
     }
@@ -262,13 +262,11 @@ void print_result(struct AlgorithmState *algo_state) {
 
 void free_step(struct step_middle *step) {
     if (step == NULL)return;
-    {
         step->ref_counter--;
         if (step->ref_counter <= 0) {
             free_step(step->previous_step);
             free(step);
         }
-    }
 }
 
 // max threads 10, max tours 1000
@@ -278,18 +276,20 @@ int deleteIndex[10];
 
 void safe_free_tour(struct Tour *tour) {
     toDelete[omp_get_thread_num()][deleteIndex[omp_get_thread_num()]++] = tour;
-    if(deleteIndex[omp_get_thread_num()] > 1000) printf("EXCEEDED MAX DELETABLE TOURS!\n");
+    if (deleteIndex[omp_get_thread_num()] > 1000) printf("EXCEEDED MAX DELETABLE TOURS!\n");
 }
 
 void free_tour(struct Tour *tour) {
     if (tour == NULL) return;
-#pragma omp critical(free_memory)
+#pragma omp master
     {
         struct step_middle *step = tour->previous_step;
         free_step(step);
         free(tour);
     }
+
 }
+
 
 double get_global_lower_bound(int number_of_cities, struct city *cities) {
     double lower_bound = 0;
@@ -297,7 +297,7 @@ double get_global_lower_bound(int number_of_cities, struct city *cities) {
     return lower_bound / 2;
 }
 
-inline double compute_updated_lower_bound(double lower_bound,  int source_city,  int destination_city) {
+inline double compute_updated_lower_bound(double lower_bound, unsigned int source_city, unsigned int destination_city) {
     double jump_cost = get_cost_from_city_to_city(source_city, destination_city);
     int comp_1 = jump_cost >= cities[source_city].min_cost2;
     double ct = (comp_1) * cities[source_city].min_cost2
@@ -345,11 +345,11 @@ inline void visit_city(struct Tour *tour, int destination, struct AlgorithmState
                 if (current_tour_is_better) {
                     (*tours_created)++;
 //#pragma omp task if(omp_get_thread_num() == 0) priority(1000)
-
                     free_tour(algo_state->solution);
                     algo_state->solution = go_to_city(new_tour, 0, algo_state, final_cost);
-                    queue_trim(algo_state->queue, final_cost); // REMOVE QUEUE TRIM
+                    //queue_trim(algo_state->queue, final_cost); // REMOVE QUEUE TRIM
                 } else
+//#pragma omp task if(omp_get_thread_num() == 0) priority(1000)
                 {
                     free(new_tour); // not free_tour because we only want to delete this piece, and do not wnat to look to prev step
                 }
@@ -363,7 +363,6 @@ inline int analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
     int loops = algo_state->number_of_cities;
     int i = 0;
 
-    if(tour->cost < 0) return 1;
     for (; i < loops; i++)visit_city(tour, i, algo_state, &tours_created);
     /*
     for (; i < loops; i += 2) {
@@ -380,17 +379,16 @@ inline int analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
 }
 
 struct AlgorithmState *thread_states;
-#define MERGE_RANGE 1000
+
+#define MERGE_RANGE 10000000
 
 void basic_queue_merge(priority_queue_t *newQueue, priority_queue_t *queue1) {
-
     struct Tour *current_tour;
     for (int i = 0; i < MERGE_RANGE; ++i) {
         current_tour = queue_pop(queue1);
         if(current_tour == NULL) break;
         queue_push(newQueue, current_tour);
     }
-    //queue_delete(queue1);
 }
 
 void execute_load() {
@@ -411,8 +409,9 @@ void execute_load() {
             free_tour(current_tour);
             continue;
         }
+
         ((struct step_middle *) current_tour)->ref_counter = newToursCreated;
-        if (thread_runs++ > 1000) break;
+        if (thread_runs++ > 10000) break;
     }
 }
 
@@ -428,37 +427,41 @@ struct Tour *copy_tour(struct Tour *tour) {
 
 void sync_q(priority_queue_t *global_queue, struct AlgorithmState *global_state) {
 
-    int tid = omp_get_thread_num();
+    int i = 0;
+    int nr_of_threads = omp_get_num_threads();
+    for (int j = 0; j < nr_of_threads; j++) {
+        basic_queue_merge(global_queue, thread_states[i].queue);
+        // find the best solution in each thread and compare with the global best solution
 
 
-#pragma omp critical
-    {
-        basic_queue_merge(global_queue, thread_states[tid].queue);
-        if (thread_states[tid].solution->cost < global_state->solution->cost) {
+        if (thread_states[i].solution->cost < global_state->solution->cost) {
             free_tour(global_state->solution);
-            global_state->solution = thread_states[tid].solution;
+            global_state->solution = thread_states[i].solution;
+            printf("Solution updated with cost %f", global_state->solution->cost);
         }
-    };
-#pragma omp barrier
+    }
+    for (int j = 0; j < nr_of_threads; j++) {
         // copy the best solution to each thread
-        thread_states[tid].solution = copy_tour(global_state->solution);
+        thread_states[j].solution = copy_tour(global_state->solution);
+    }
 }
 
-void distribute_load(priority_queue_t *global) {
+void distribute_load(priority_queue_t *global, int number_of_cities) {
     int atual = 0;
     int nr_of_threads = omp_get_num_threads();
     int distributed_tours = nr_of_threads * 1000;
     for (int i = 0; i < distributed_tours; i++) {
         if (atual++ >= nr_of_threads) atual = 1; // fazer zig zag depois
-        struct Tour *tour = queue_pop(global); // NOTA: tiramos os 100 tours melhores de cada thread e injetamos os 30 melhores para cada uma (assim nao temo sque percorrer as queues todas!)
+        struct Tour *tour = queue_pop(
+                global); // NOTA: tiramos os 100 tours melhores de cada thread e injetamos os 30 melhores para cada uma (assim nao temo sque percorrer as queues todas!)
         if (!tour) break;
-        queue_push(thread_states[atual-1].queue, tour);
+        queue_push(thread_states[atual - 1].queue, tour);
     }
 }
 
 
 void tscp(struct AlgorithmState *global_algo_state) {
-#pragma omp parallel num_threads(4) shared(thread_states)
+#pragma omp parallel num_threads(1) shared(thread_states)
     {
         int nr_of_threads = omp_get_num_threads();
         printf("Heloo from thread %d\n", omp_get_thread_num());
@@ -501,7 +504,7 @@ void tscp(struct AlgorithmState *global_algo_state) {
 
 #pragma omp barrier
 #pragma omp single
-        distribute_load(global_algo_state->queue);
+        distribute_load(global_algo_state->queue, global_algo_state->number_of_cities);
 
         while (1) {
             execute_load(global_algo_state);
@@ -518,13 +521,14 @@ for(int k =0; k < nr_of_threads; k++){
             }
             if (global_algo_state->queue->size == 0 && res) break;
 #pragma omp barrier
-            distribute_load(global_algo_state->queue);
+#pragma omp single
+            distribute_load(global_algo_state->queue, global_algo_state->number_of_cities);
 #pragma omp barrier
         }
 #pragma omp barrier
+     }
     }
 
-}
 
 double average_cost = 0;
 
@@ -563,7 +567,7 @@ void parse_inputs(int argc, char **argv, struct AlgorithmState *algo_state) {
     }
     fgets((char *) &buffer, 1024, cities_fp);
     algo_state->number_of_cities = atoi(strtok(buffer, " "));
-    //cities = calloc(algo_state->number_of_cities, sizeof(struct city));
+    cities = calloc(algo_state->number_of_cities, sizeof(struct city));
     algo_state->number_of_roads = atoi(strtok(NULL, " "));
 
     all_cities_visited_mask = 0;
@@ -597,24 +601,28 @@ void parse_inputs(int argc, char **argv, struct AlgorithmState *algo_state) {
 }
 
 void dealloc_data() {
-    //free(cities);
+    free(cities);
 }
 
 // declare global variables as shared by all threads
 
 double exec_time;
-void program_exit(struct AlgorithmState * algo_state){
+
+void program_exit(struct AlgorithmState *algo_state) {
+#pragma omp barrier
+#pragma omp single
     {
-    exec_time += omp_get_wtime();
-    fprintf(stderr, "%.1fs\n", exec_time);
-    print_result(algo_state);
-    queue_delete(algo_state->queue);
-    dealloc_data();
-}
+        exec_time += omp_get_wtime();
+        fprintf(stderr, "%.1fs\n", exec_time);
+        print_result(algo_state);
+        queue_delete(algo_state->queue);
+        dealloc_data();
+    }
 }
 
 int main(int argc, char *argv[]) {
     struct AlgorithmState algo_state;
+    omp_set_num_threads(2);
     parse_inputs(argc, argv, &algo_state);
     exec_time = -omp_get_wtime();
 
