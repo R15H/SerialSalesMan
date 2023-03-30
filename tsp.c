@@ -192,7 +192,7 @@ void* remove_element(priority_queue_t *queue, size_t node)
 
 
 void queue_trim(priority_queue_t *queue, double maxCost){
-    printf("Solution found... %d", rand());
+    printf("Solution found... %f\n", maxCost);
     if(queue->size < 1000000){
         return;
     }
@@ -275,7 +275,7 @@ void print_result(struct AlgorithmState *algo_state) {
     int cities_visited = algo_state->number_of_cities + 1;
     int values[50]; // max 50 cities
 
-    printf("%.1f\n", algo_state->solution->cost);
+    printf("%.1f\n", algo_state->solution->cost/2);
 
     for(int i = 0; i < cities_visited; i++)
         printf("%d ", algo_state->solution->visited_list[i]);
@@ -335,11 +335,11 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
 
         if (!discard_tour) {
             struct Tour *new_tour = tour;
-            if(tours_created != 0) reused_go_to_city(tour, i, algo_state, new_cost);
+            if(tours_created == 0) reused_go_to_city(tour, i, algo_state, new_cost);
             else new_tour = go_to_city(tour, i, algo_state, new_cost);
+            (*tours_created)++;
             int finished = get_visited_all_cities(new_tour, algo_state);
             if (!finished) {
-                (*tours_created)++;
                 queue_push(algo_state->queue, new_tour);
             } else {
                 double final_cost = compute_updated_lower_bound(new_tour->cost, i, 0);
