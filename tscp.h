@@ -28,18 +28,16 @@ struct step_middle {
 };
 
 struct Tour {
-    int current_city;
-    int stepID;
     int nr_visited;
-    struct step_middle *previous_step;
     double cost;
     unsigned int cities_visited; // bit map of the cities visited
+    int visited_list[64];
 };
 
 
 
 union step {
-    struct step_middle step_middle; // we know a step middle is middle because it is accessed through a pointer to a step middle
+    //struct step_middle step_middle; // we know a step middle is middle because it is accessed through a pointer to a step middle
     struct Tour Tour;        // we know a step head is head because it is retrieved from the queue
 };
 
