@@ -31,7 +31,7 @@ struct Tour {
     int nr_visited;
     double cost;
     unsigned int cities_visited; // bit map of the cities visited
-    int visited_list[64];
+    short visited_list[64];
 };
 
 

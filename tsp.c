@@ -192,6 +192,7 @@ void* remove_element(priority_queue_t *queue, size_t node)
 
 
 void queue_trim(priority_queue_t *queue, double maxCost){
+    if(queue->size < 2000) return;
     printf("Solution found... %f\n", maxCost);
     for(int j = 0; j < queue->size-1; j++){
         if(((struct Tour*)queue->buffer[j])->cost >= maxCost){
@@ -404,6 +405,8 @@ inline int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
     for(; i < algo_state->number_of_cities; i++) {
         visit_city(&this_tour, i, algo_state, &tours_created);
     }
+
+    queue_trim(algo_state->queue, algo_state->solution->cost);
 
 
     //if(loops % 2 == 0) loops--;
