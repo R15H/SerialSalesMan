@@ -315,7 +315,7 @@ void free_tour(struct Tour *tour) {
 double get_global_lower_bound(int number_of_cities, struct city *cities) {
     double lower_bound = 0;
     for (int i = 0; i < number_of_cities; i++) lower_bound = cities[i].min_cost + cities[i].min_cost2;
-    return lower_bound / 2;
+    return lower_bound ;
 }
 
 inline double compute_updated_lower_bound(double lower_bound, unsigned int source_city, unsigned int destination_city) {
@@ -327,7 +327,7 @@ inline double compute_updated_lower_bound(double lower_bound, unsigned int sourc
     double cf =
             (comp_2) * cities[destination_city].min_cost2 +
             (comp_2 == 0) * cities[destination_city].min_cost;
-    return lower_bound + jump_cost - (ct + cf) / 2;
+    return lower_bound + jump_cost - (ct + cf) ;
 }
 
 inline struct Tour *go_to_city(struct Tour *tour, short city_id, struct AlgorithmState *algo_state, double cost) {
@@ -433,7 +433,7 @@ void place_cost_in_city(int city_source, int city_destination, double cost, int 
         current_city->min_cost = cost;
     else if (current_city->min_cost2 > cost)
         current_city->min_cost2 = cost;
-    (current_city->cost)[city_destination] = cost;
+    (current_city->cost)[city_destination] = cost*2;
 }
 
 // Initializes the AlgorithmState variable
@@ -444,7 +444,7 @@ void parse_inputs(int argc, char **argv, struct AlgorithmState *algo_state) {
         exit(-1);
     };
     char *cities_file = argv[1];
-    algo_state->max_lower_bound = atof(argv[2]);
+    algo_state->max_lower_bound = atof(argv[2])*2;
 
     char buffer[1024];
     FILE *cities_fp = fopen(cities_file, "r");
@@ -466,7 +466,7 @@ void parse_inputs(int argc, char **argv, struct AlgorithmState *algo_state) {
 
     algo_state->all_cities_visited_mask = all_cities_visited_mask;
 
-    double road_cost[algo_state->number_of_roads];
+    double *road_cost = malloc(sizeof(double)* algo_state->number_of_roads); //algo_state->number_of_roads];
     int number_of_roads_read = 0;
     while (fgets(buffer, 1024, cities_fp) != NULL) {
         int city_number = atoi(strtok(buffer, " "));
@@ -485,6 +485,7 @@ void parse_inputs(int argc, char **argv, struct AlgorithmState *algo_state) {
     deviation = sqrt(deviation/number_of_roads_read);
 
     fclose(cities_fp);
+    free(road_cost);
 }
 
 void dealloc_data() {
