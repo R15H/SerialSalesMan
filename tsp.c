@@ -308,8 +308,8 @@ inline double compute_updated_lower_bound(double lower_bound, unsigned int sourc
 }
 
 inline struct Tour *go_to_city(struct Tour *tour, short city_id, struct AlgorithmState *algo_state, double cost) {
-    struct Tour *new_tour = malloc(sizeof(struct Tour));
-    memcpy(new_tour, tour, sizeof(struct Tour));
+    struct Tour *new_tour = malloc(sizeof(struct Tour) + sizeof(short) * (algo_state->number_of_cities+1));
+    memcpy(new_tour, tour, sizeof(struct Tour) + sizeof(short) * (tour->nr_visited+1));
     //new_tour->nr_visited = tour->nr_visited + 1; // this plus can be done only once
 
     new_tour->visited_list[++new_tour->nr_visited] = city_id;
@@ -419,12 +419,16 @@ inline int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
 
 
 void tscp(struct AlgorithmState *algo_state) {
-    algo_state->solution = malloc(sizeof (struct Tour));
+    algo_state->solution = malloc(sizeof (struct Tour)
+            + sizeof(short) * (algo_state->number_of_cities+1)
+            );
     algo_state->solution->cost = algo_state->max_lower_bound;
     algo_state->solution->cities_visited = algo_state->all_cities_visited_mask;
     algo_state->solution->nr_visited = 63;
 
-    struct Tour *first_step = malloc(sizeof (struct Tour));
+    struct Tour *first_step = malloc(sizeof (struct Tour)
+                                     + sizeof(short) * (algo_state->number_of_cities+1)
+            );
     first_step->visited_list[0] = 0;
     first_step->cities_visited = 1;
     first_step->nr_visited = 0;
