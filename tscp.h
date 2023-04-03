@@ -18,14 +18,6 @@ struct city CitiesTable[MAX_CITIES];
 unsigned int binary_masks[MAX_CITIES];
 unsigned int all_cities_visited_mask;
 
-struct step_middle {
-    int current_city;
-    int stepID;
-    int nr_visited;
-    struct step_middle *previous_step;
-    omp_lock_t decrease_counter_lock; // 8 bytes, replaces cost
-    unsigned int ref_counter; // nr of paths it belongs to
-};
 
 struct Tour {
     short nr_visited;
@@ -36,10 +28,6 @@ struct Tour {
 
 
 
-union step {
-    //struct step_middle step_middle; // we know a step middle is middle because it is accessed through a pointer to a step middle
-    struct Tour Tour;        // we know a step head is head because it is retrieved from the queue
-};
 
 
 struct AlgorithmState {

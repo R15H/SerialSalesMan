@@ -190,11 +190,12 @@ void* remove_element(priority_queue_t *queue, size_t node)
     return removed_val;
 }
 
+int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state);
 
 void queue_trim(priority_queue_t *queue, double maxCost){
-    if(queue->size < 2000) return;
-    printf("Solution found... %f\n", maxCost);
-    for(int j = 0; j < queue->size-1; j++){
+    //if(queue->size < 2000) return;
+    //printf("Solution found... %f\n", maxCost);
+    for(int j = 0; j < queue->size-1 && queue->size > 0; j++){
         if(((struct Tour*)queue->buffer[j])->cost >= maxCost){
             void *toFree = queue->buffer[j];
             remove_element(queue, j);
@@ -341,11 +342,16 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
 
         if (!discard_tour) {
             struct Tour *new_tour = tour;
+            double old_cost = tour->cost;
             if(tours_created == 0) reused_go_to_city(tour, i, algo_state, new_cost);
             else new_tour = go_to_city(tour, i, algo_state, new_cost);
             (*tours_created)++;
             int finished = get_visited_all_cities(new_tour, algo_state);
             if (!finished) {
+                if(new_cost == old_cost){
+                    analyseTour(new_tour, algo_state);
+                    return;
+                }
                 queue_push(algo_state->queue, new_tour);
             } else {
                 double final_cost = compute_updated_lower_bound(new_tour->cost, i, 0);
@@ -392,7 +398,7 @@ void reused_visit_city(struct Tour *tour,int destination, struct AlgorithmState 
         }
     }
 }
-inline int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
+int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
     int tours_created = 0;
     int loops = algo_state->number_of_cities - 1;
     struct Tour this_tour = *tour;
@@ -455,12 +461,24 @@ void place_cost_in_city(int city_source, int city_destination, double cost, int 
         for (int i = 0; i < number_of_cities; i++) {
             (current_city->cost)[i] = DOUBLE_MAX / 4;
         }
+        current_city->min_cost = DOUBLE_MAX/2;
+        current_city->min_cost2 = DOUBLE_MAX/2;
     }
+
     if (current_city->min_cost > cost)
         current_city->min_cost = cost;
     else if (current_city->min_cost2 > cost)
         current_city->min_cost2 = cost;
+
+
+    // supostamente redundante... mas não...
+    if(cities[city_destination].min_cost > cost)
+        cities[city_destination].min_cost = cost;
+    else if (cities[city_destination].min_cost2 > cost)
+        cities[city_destination].min_cost2 = cost;
+
     (current_city->cost)[city_destination] = cost*2;
+
 }
 
 // Initializes the AlgorithmState variable
