@@ -192,7 +192,7 @@ void* remove_element(priority_queue_t *queue, size_t node)
 
 
 void queue_trim(priority_queue_t *queue, double maxCost){
-    if(queue->size < 2000) return;
+    if(queue->size < 1000) return;
     printf("Solution found... %f\n", maxCost);
     for(int j = 0; j < queue->size-1; j++){
         if(((struct Tour*)queue->buffer[j])->cost >= maxCost){
@@ -308,9 +308,10 @@ inline double compute_updated_lower_bound(double lower_bound, unsigned int sourc
 }
 
 inline struct Tour *go_to_city(struct Tour *tour, short city_id, struct AlgorithmState *algo_state, double cost) {
-    struct Tour *new_tour = malloc(sizeof(struct Tour) + sizeof(short) * (algo_state->number_of_cities+1));
-    memcpy(new_tour, tour, sizeof(struct Tour) + sizeof(short) * (tour->nr_visited+1));
+    struct Tour *new_tour = malloc(sizeof(struct Tour) + sizeof(short *) * (algo_state->number_of_cities ));
+    memcpy(new_tour, tour, sizeof(struct Tour) + sizeof(short) * tour->nr_visited);
     //new_tour->nr_visited = tour->nr_visited + 1; // this plus can be done only once
+    new_tour->visited_list = (short *) (new_tour + sizeof(struct Tour));
 
     new_tour->visited_list[++new_tour->nr_visited] = city_id;
     new_tour->cities_visited = tour->cities_visited | binary_masks[city_id];
@@ -333,10 +334,10 @@ int shouldnt_create_tour(double cost, int current_city, struct AlgorithmState *a
 }
  */
 
-void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_state, int *tours_created){
-    int i = destination;
+void visit_city(struct Tour *tour,short destination, struct AlgorithmState *algo_state, int *tours_created){
+    short i = destination;
     if (!get_was_visited(tour, i)) {
-        double new_cost = compute_updated_lower_bound(tour->cost, tour->visited_list[tour->nr_visited], i);
+        double new_cost = compute_updated_lower_bound(tour->cost, tour->visited_list[tour->nr_visited], i);// -1?
         int discard_tour = new_cost > algo_state->solution->cost;
 
         if (!discard_tour) {
@@ -406,7 +407,7 @@ inline int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
         visit_city(&this_tour, i, algo_state, &tours_created);
     }
 
-    queue_trim(algo_state->queue, algo_state->solution->cost);
+    //queue_trim(algo_state->queue, algo_state->solution->cost);
 
 
     //if(loops % 2 == 0) loops--;
@@ -419,16 +420,14 @@ inline int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
 
 
 void tscp(struct AlgorithmState *algo_state) {
-    algo_state->solution = malloc(sizeof (struct Tour)
-            + sizeof(short) * (algo_state->number_of_cities+1)
-            );
+    algo_state->solution = malloc(sizeof (struct Tour) + sizeof(short)*algo_state->number_of_cities);
+    algo_state->solution->visited_list = (short *) (algo_state->solution + sizeof(struct Tour));
     algo_state->solution->cost = algo_state->max_lower_bound;
     algo_state->solution->cities_visited = algo_state->all_cities_visited_mask;
     algo_state->solution->nr_visited = 63;
 
-    struct Tour *first_step = malloc(sizeof (struct Tour)
-                                     + sizeof(short) * (algo_state->number_of_cities+1)
-            );
+    struct Tour *first_step = malloc(sizeof (struct Tour) + sizeof(short) * algo_state->number_of_cities);
+    first_step->visited_list = (short *) (first_step + sizeof(struct Tour));
     first_step->visited_list[0] = 0;
     first_step->cities_visited = 1;
     first_step->nr_visited = 0;
@@ -451,13 +450,17 @@ void place_cost_in_city(int city_source, int city_destination, double cost, int 
     struct city *current_city = &cities[city_source];
     if (current_city->cost == NULL) {
         current_city->cost = calloc(number_of_cities, sizeof(double));
+        current_city->min_cost2 = DOUBLE_MAX;
+        current_city->min_cost = DOUBLE_MAX;
         // initialize every entry of the array to DOUBLE_MAX/2
         for (int i = 0; i < number_of_cities; i++) {
             (current_city->cost)[i] = DOUBLE_MAX / 4;
         }
     }
-    if (current_city->min_cost > cost)
+    if (current_city->min_cost > cost){
+        //current_city->min_cost2 = current_city->min_cost;
         current_city->min_cost = cost;
+    }
     else if (current_city->min_cost2 > cost)
         current_city->min_cost2 = cost;
     (current_city->cost)[city_destination] = cost*2;
