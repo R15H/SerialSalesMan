@@ -312,6 +312,7 @@ inline struct Tour *go_to_city(struct Tour *tour, short city_id, struct Algorith
     struct Tour *new_tour = malloc(sizeof(struct Tour) + sizeof(short) * (algo_state->number_of_cities+1));
     memcpy(new_tour, tour, sizeof(struct Tour) + sizeof(short) * (tour->nr_visited+1));
     //new_tour->nr_visited = tour->nr_visited + 1; // this plus can be done only once
+    new_tour->visited_list[0] = 1;
 
     new_tour->visited_list[++new_tour->nr_visited] = city_id;
     new_tour->cities_visited = tour->cities_visited | binary_masks[city_id];
