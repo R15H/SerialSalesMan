@@ -23,7 +23,7 @@ struct Tour {
     short nr_visited;
     double cost;
     unsigned int cities_visited; // bit map of the cities visited --> needs to be 64 bits unsigned long long
-    short visited_list[15];
+    short visited_list[19];
 };
 
 

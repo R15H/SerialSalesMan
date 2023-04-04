@@ -33,6 +33,7 @@ static size_t parent_of(size_t i)
 
 
 
+
 inline int compare_paths(struct Tour * path1, struct Tour* path2){
 
     return path1->cost < path2->cost;
@@ -190,6 +191,7 @@ void* remove_element(priority_queue_t *queue, size_t node)
     return removed_val;
 }
 
+#define ALLOC_TOUR malloc(sizeof(struct Tour))
 int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state);
 
 void queue_trim(priority_queue_t *queue, double maxCost){
@@ -309,10 +311,11 @@ inline double compute_updated_lower_bound(double lower_bound, unsigned int sourc
 }
 
 inline struct Tour *go_to_city(struct Tour *tour, short city_id, struct AlgorithmState *algo_state, double cost) {
-    struct Tour *new_tour = malloc(sizeof(struct Tour) + sizeof(short) * (algo_state->number_of_cities+1));
-    memcpy(new_tour, tour, sizeof(struct Tour) + sizeof(short) * (tour->nr_visited+1));
+    struct Tour *new_tour = ALLOC_TOUR;
+            //malloc(sizeof(struct Tour) + sizeof(short) * (algo_state->number_of_cities+1));
+    memcpy(new_tour, tour, sizeof(struct Tour)); // + sizeof(short) * (tour->nr_visited+1));
     //new_tour->nr_visited = tour->nr_visited + 1; // this plus can be done only once
-    new_tour->visited_list[0] = 1;
+    new_tour->visited_list[0] = 0;
 
     new_tour->visited_list[++new_tour->nr_visited] = city_id;
     new_tour->cities_visited = tour->cities_visited | binary_masks[city_id];
@@ -357,6 +360,7 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
             } else {
                 double final_cost = compute_updated_lower_bound(new_tour->cost, i, 0);
                 int current_tour_is_better = final_cost < algo_state->solution->cost;
+                //printf("Free a thing...");
                 if (current_tour_is_better) {
                     free_tour(algo_state->solution);
                     reused_go_to_city(new_tour, 0, algo_state, final_cost);
@@ -426,16 +430,25 @@ int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
 
 
 void tscp(struct AlgorithmState *algo_state) {
-    algo_state->solution = malloc(sizeof (struct Tour)
+    algo_state->solution = ALLOC_TOUR;
+            /*
+            malloc(sizeof (struct Tour)
             + sizeof(short) * (algo_state->number_of_cities+1)
             );
+
+
+             */
     algo_state->solution->cost = algo_state->max_lower_bound;
     algo_state->solution->cities_visited = algo_state->all_cities_visited_mask;
     algo_state->solution->nr_visited = 63;
 
-    struct Tour *first_step = malloc(sizeof (struct Tour)
+    struct Tour *first_step =
+           ALLOC_TOUR;
+    /*
+            malloc(sizeof (struct Tour)
                                      + sizeof(short) * (algo_state->number_of_cities+1)
             );
+            */
     first_step->visited_list[0] = 0;
     first_step->cities_visited = 1;
     first_step->nr_visited = 0;
