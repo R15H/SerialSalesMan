@@ -17,6 +17,8 @@
 #endif
 
 int nr_processes = 0;
+MPI_Request sol_requests[64];
+double sol_values[64];
 #define DOUBLE_MAX 1.7976931348623155e+308
 
 #pragma runtime_checks("", off)
@@ -377,14 +379,11 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
                     algo_state->solution = go_to_city(new_tour, 0, algo_state, final_cost);
                     solution_cost = final_cost;
                     //MPI_ibcast(&solution_cost, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-                    MPI_Ibcast(&volatile_solution_cost , 1, MPI_DOUBLE, id, MPI_COMM_WORLD, &solution_cost_request); // the variable being broadcasted is a pointer, as so it cannot be in the stack!
                     MPI_Status status;
                     int flag;
-                    if(MPI_Test(&solution_cost_request, &flag, &status) == MPI_SUCCESS) {
-                        // check if previous broadcast finished, if not we cannot broadcast the new value...
-                        if(flag) {
-                            printf("Received value %d from process %d\n", value, status.MPI_SOURCE);
-                        }
+                    if(MPI_Test(&sol_requests[id], &flag, &status) != MPI_PENDING) {
+                        // can only broadcast if previous broadcast finished
+                        MPI_Ibcast(&sol_values[id] , 1, MPI_DOUBLE, id, MPI_COMM_WORLD, &sol_requests[id]); // the variable being broadcasted is a pointer, as so it cannot be in the stack!
                         // TODO either wait for the previous broadcast to finish, or sequechule send... (OMP task?)
                     }
                     queue_trim(algo_state->queue, solution_cost);
@@ -412,8 +411,6 @@ int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
     return tours_created;
 }
 
-MPI_Request sol_requests[64];
-double sol_values[64];
 
 void tscp(struct AlgorithmState *algo_state) {
     algo_state->solution = (struct Tour *) get_clean_step();
@@ -446,7 +443,7 @@ void tscp(struct AlgorithmState *algo_state) {
                 if(MPI_Test(&solution_cost_request, &flag, &status) == MPI_SUCCESS) {
                     if(sol_values[i] < solution_cost){
                         solution_cost = volatile_solution_cost;
-                        print_result("Updated solution cost on process %d to %f", id, sol_values[i]);
+                        printf("Updated solution cost on process %d to %f", id, sol_values[i]);
                     }
                     printf("Received value %d from process %d\n", value, status.MPI_SOURCE);
                 }
