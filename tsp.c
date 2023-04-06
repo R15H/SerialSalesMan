@@ -310,7 +310,6 @@ inline void free_step(struct step_middle *step) {
 }
 
 void free_tour(struct Tour *tour) {
-    if (tour == NULL) return;
     struct step_middle *step = tour->previous_step;
     free_step(step);
     free(tour);
@@ -434,17 +433,21 @@ void place_cost_in_city(int city_source, int city_destination, double cost, int 
         current_city->min_cost = DOUBLE_MAX;
         current_city->min_cost2 = DOUBLE_MAX;
     }
-    if (current_city->min_cost > cost)
-        current_city->min_cost = cost;
-    else if (current_city->min_cost2 > cost)
+
+
+    if (current_city->min_cost2 > cost) {
         current_city->min_cost2 = cost;
+    } else if (current_city->min_cost > cost)
+        current_city->min_cost = cost;
     (current_city->cost)[city_destination] = cost*2;
 
+    /*
     current_city = &cities[city_destination];
     if (current_city->min_cost > cost)
         current_city->min_cost = cost;
     else if (current_city->min_cost2 > cost)
         current_city->min_cost2 = cost;
+        */
 }
 
 // Initializes the AlgorithmState variable
