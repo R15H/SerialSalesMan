@@ -296,12 +296,16 @@ void print_result(struct AlgorithmState *algo_state) {
     printf("0 \n");
 }
 
-void free_step(struct step_middle *step) {
-    if (step == NULL)return;
-    step->ref_counter--;
-    if (step->ref_counter <= 0) {
-        free_step(step->previous_step);
-        free(step);
+inline void free_step(struct step_middle *step) {
+    struct step_middle *previous_step;
+    while(step != NULL){
+        step->ref_counter--;
+        if (step->ref_counter <= 0) {
+            previous_step = step->previous_step;
+            free(step);
+            step = previous_step;
+        }
+        else break;
     }
 }
 
