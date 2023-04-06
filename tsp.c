@@ -16,6 +16,7 @@
 #define MESSAGE(message, ...)
 #endif
 
+int nr_processes = 0;
 #define DOUBLE_MAX 1.7976931348623155e+308
 
 #pragma runtime_checks("", off)
@@ -37,7 +38,7 @@ void print_tour(struct Tour* tour){
 }
 
 
-inline int compare_paths(struct Tour * path1, struct Tour* path2){
+int compare_paths(struct Tour * path1, struct Tour* path2){
 
     return path1->cost < path2->cost;
     //return (path1)->cost + (-path1->nr_visited + path2->nr_visited)* deviation < ((struct Tour*) path2)->cost;
@@ -297,7 +298,7 @@ void print_result(struct AlgorithmState *algo_state) {
     printf("0 \n");
 }
 
-inline void free_step(struct step_middle *step) {
+void free_step(struct step_middle *step) {
     struct step_middle *previous_step;
     while(step != NULL){
         step->ref_counter--;
@@ -322,7 +323,7 @@ double get_global_lower_bound(int number_of_cities, struct city *cities) {
     return lower_bound ;
 }
 
-inline double compute_updated_lower_bound(double lower_bound, unsigned int source_city, unsigned int destination_city) {
+double compute_updated_lower_bound(double lower_bound, unsigned int source_city, unsigned int destination_city) {
     double jump_cost = get_cost_from_city_to_city(source_city, destination_city);
     int comp_1 = jump_cost >= cities[source_city].min_cost2;
     double ct = (comp_1) * cities[source_city].min_cost2
@@ -334,7 +335,7 @@ inline double compute_updated_lower_bound(double lower_bound, unsigned int sourc
     return lower_bound + jump_cost - (ct + cf) ;
 }
 
-inline struct Tour *go_to_city(struct Tour *tour, short city_id, struct AlgorithmState *algo_state, double cost) {
+struct Tour *go_to_city(struct Tour *tour, short city_id, struct AlgorithmState *algo_state, double cost) {
     // create a new tour and convert the current tour to a step middle
     struct Tour *new_tour = (struct Tour *) get_clean_step();
     new_tour->current_city = city_id;
@@ -352,7 +353,10 @@ inline struct Tour *go_to_city(struct Tour *tour, short city_id, struct Algorith
            //step_worst_than_found_solution;
 //}
 
+double volatile_solution_cost;
 double solution_cost;
+MPI_Request solution_cost_request_send;
+int p,id;
 void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_state, int *tours_created){
     int i = destination;
     if (!get_was_visited(tour, i)) {
@@ -371,8 +375,18 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
                     (*tours_created)++;
                     free_tour(algo_state->solution);
                     algo_state->solution = go_to_city(new_tour, 0, algo_state, final_cost);
-                    solution_cost =
-                    MPI_Bcast(&solution_cost, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+                    solution_cost = final_cost;
+                    //MPI_ibcast(&solution_cost, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+                    MPI_Ibcast(&volatile_solution_cost , 1, MPI_DOUBLE, id, MPI_COMM_WORLD, &solution_cost_request); // the variable being broadcasted is a pointer, as so it cannot be in the stack!
+                    MPI_Status status;
+                    int flag;
+                    if(MPI_Test(&solution_cost_request, &flag, &status) == MPI_SUCCESS) {
+                        // check if previous broadcast finished, if not we cannot broadcast the new value...
+                        if(flag) {
+                            printf("Received value %d from process %d\n", value, status.MPI_SOURCE);
+                        }
+                        // TODO either wait for the previous broadcast to finish, or sequechule send... (OMP task?)
+                    }
                     queue_trim(algo_state->queue, solution_cost);
                 } else {
                     free(new_tour); // not free_tour because we only want to delete this piece, and do not wnat to look to prev step
@@ -383,7 +397,7 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
 }
 
 
-inline int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
+int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
     int tours_created = 0;
     int loops = algo_state->number_of_cities - 1;
     int i = 1;
@@ -398,6 +412,8 @@ inline int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
     return tours_created;
 }
 
+MPI_Request sol_requests[64];
+double sol_values[64];
 
 void tscp(struct AlgorithmState *algo_state) {
     algo_state->solution = (struct Tour *) get_clean_step();
@@ -419,6 +435,24 @@ void tscp(struct AlgorithmState *algo_state) {
         int newToursCreated = analyseTour(current_tour, algo_state);
         if (newToursCreated == 0) {
             free_tour(current_tour);
+
+            // check if any of the processes has a better solution, iterate over all processes
+            // we use this if to periodically check, a new if would consume more resources...
+            for(int i=0; i < nr_processes; i++){
+                MPI_Status status;
+                int flag;
+                if(i == id) continue; // do not send to self (we already have the value)
+                MPI_Ibcast(&volatile_solution_cost , 1, MPI_DOUBLE, i, MPI_COMM_WORLD, &sol_requests[i]);
+                if(MPI_Test(&solution_cost_request, &flag, &status) == MPI_SUCCESS) {
+                    if(sol_values[i] < solution_cost){
+                        solution_cost = volatile_solution_cost;
+                        print_result("Updated solution cost on process %d to %f", id, sol_values[i]);
+                    }
+                    printf("Received value %d from process %d\n", value, status.MPI_SOURCE);
+                }
+            }
+
+
             continue;
         }
         ((struct step_middle *) current_tour)->ref_counter = newToursCreated;
@@ -510,22 +544,34 @@ void dealloc_data() {
     free(cities);
 }
 
+void handle_new_solution(MPI_Comm comm, int err_code, void *data, void *attr) {
+    double value = *((double*) data);
+    if(value < solution_cost){
+        solution_cost = value;
+    }
+    printf("Received value: %d\n", value);
+}
 
+int err_key;
+MPI_Errhandler err_handler;
 int main(int argc, char *argv[]) {
     double exec_time;
     struct AlgorithmState algo_state;
     parse_inputs(argc, argv, &algo_state);
     MPI_Init (&argc, &argv);
+    MPI_Comm_size(MPI_COMM_WORLD, &nr_processes);
     MPI_Barrier(MPI_COMM_WORLD);
-    elapsed_time = -MPI_Wtime();
+
+    exec_time = -MPI_Wtime();
     MPI_Comm_rank (MPI_COMM_WORLD, &id);
     MPI_Comm_size (MPI_COMM_WORLD, &p);
 
-    exec_time = -omp_get_wtime();
+//exec_time = -omp_get_wtime();
     algo_state.queue = queue_create((char (*)(void *, void *)) NULL);
     tscp(&algo_state);
 
-    exec_time += omp_get_wtime();
+//exec_time += omp_get_wtime();
+exec_time += MPI_Wtime();
     fprintf(stderr, "%.1fs\n", exec_time);
     print_result(&algo_state);
     queue_delete(algo_state.queue);
