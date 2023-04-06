@@ -310,7 +310,6 @@ inline void free_step(struct step_middle *step) {
 }
 
 void free_tour(struct Tour *tour) {
-    if (tour == NULL) return;
     struct step_middle *step = tour->previous_step;
     free_step(step);
     free(tour);
@@ -319,7 +318,7 @@ void free_tour(struct Tour *tour) {
 double get_global_lower_bound(int number_of_cities, struct city *cities) {
     double lower_bound = 0;
     for (int i = 0; i < number_of_cities; i++) lower_bound = cities[i].min_cost + cities[i].min_cost2;
-    return lower_bound ;
+    return lower_bound;
 }
 
 inline double compute_updated_lower_bound(double lower_bound, unsigned int source_city, unsigned int destination_city) {
@@ -357,7 +356,7 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
     if (!get_was_visited(tour, i)) {
         double new_cost = compute_updated_lower_bound(tour->cost, tour->current_city, i);
 
-        if (!(new_cost > algo_state->solution->cost)) {
+        if (new_cost <= algo_state->solution->cost) {
             struct Tour *new_tour = go_to_city(tour, i, algo_state, new_cost);
             int finished = get_visited_all_cities(new_tour, algo_state);
             if (!finished) {
@@ -383,6 +382,8 @@ inline int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
     int tours_created = 0;
     int loops = algo_state->number_of_cities - 1;
     int i = 1;
+    for(;i<loops; i++) visit_city(tour, i, algo_state, &tours_created);
+    /*
     for (; i < loops; i += 2) {
         visit_city(tour, i, algo_state, &tours_created);
         visit_city(tour, i+1, algo_state, &tours_created);
@@ -391,6 +392,7 @@ inline int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
         visit_city(tour,algo_state->number_of_cities - 1, algo_state, &tours_created);
     }
 
+     */
     return tours_created;
 }
 
@@ -434,15 +436,21 @@ void place_cost_in_city(int city_source, int city_destination, double cost, int 
         current_city->min_cost = DOUBLE_MAX;
         current_city->min_cost2 = DOUBLE_MAX;
     }
-    if (current_city->min_cost > cost)
+
+    cost = cost /2;
+    if (current_city->min_cost > cost){
+        //current_city->min_cost2 = current_city->min_cost;
         current_city->min_cost = cost;
+    }
     else if (current_city->min_cost2 > cost)
         current_city->min_cost2 = cost;
     (current_city->cost)[city_destination] = cost*2;
 
     current_city = &cities[city_destination];
-    if (current_city->min_cost > cost)
+    if (current_city->min_cost > cost){
+        //current_city->min_cost2 = current_city->min_cost;
         current_city->min_cost = cost;
+    }
     else if (current_city->min_cost2 > cost)
         current_city->min_cost2 = cost;
 }
