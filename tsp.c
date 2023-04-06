@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <math.h>
 #include "tscp.h"
+#include <mpi.h>
 #include <stdlib.h>
 
 #define ERROR(message) fprintf(stderr, #message);
@@ -351,12 +352,13 @@ inline struct Tour *go_to_city(struct Tour *tour, short city_id, struct Algorith
            //step_worst_than_found_solution;
 //}
 
+double solution_cost;
 void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_state, int *tours_created){
     int i = destination;
     if (!get_was_visited(tour, i)) {
         double new_cost = compute_updated_lower_bound(tour->cost, tour->current_city, i);
 
-        if (!(new_cost > algo_state->solution->cost)) {
+        if (!(new_cost > solution_cost)) {
             struct Tour *new_tour = go_to_city(tour, i, algo_state, new_cost);
             int finished = get_visited_all_cities(new_tour, algo_state);
             if (!finished) {
@@ -364,12 +366,14 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
                 queue_push(algo_state->queue, new_tour);
             } else {
                 double final_cost = compute_updated_lower_bound(new_tour->cost, i, 0);
-                int current_tour_is_better = final_cost < algo_state->solution->cost;
+                int current_tour_is_better = final_cost < solution_cost;
                 if (current_tour_is_better) {
                     (*tours_created)++;
                     free_tour(algo_state->solution);
                     algo_state->solution = go_to_city(new_tour, 0, algo_state, final_cost);
-                    queue_trim(algo_state->queue, final_cost);
+                    solution_cost =
+                    MPI_Bcast(&solution_cost, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+                    queue_trim(algo_state->queue, solution_cost);
                 } else {
                     free(new_tour); // not free_tour because we only want to delete this piece, and do not wnat to look to prev step
                 }
@@ -377,6 +381,7 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
         }
     }
 }
+
 
 inline int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
     int tours_created = 0;
@@ -510,6 +515,12 @@ int main(int argc, char *argv[]) {
     double exec_time;
     struct AlgorithmState algo_state;
     parse_inputs(argc, argv, &algo_state);
+    MPI_Init (&argc, &argv);
+    MPI_Barrier(MPI_COMM_WORLD);
+    elapsed_time = -MPI_Wtime();
+    MPI_Comm_rank (MPI_COMM_WORLD, &id);
+    MPI_Comm_size (MPI_COMM_WORLD, &p);
+
     exec_time = -omp_get_wtime();
     algo_state.queue = queue_create((char (*)(void *, void *)) NULL);
     tscp(&algo_state);
@@ -519,4 +530,5 @@ int main(int argc, char *argv[]) {
     print_result(&algo_state);
     queue_delete(algo_state.queue);
     dealloc_data();
+    MPI_Finalize();
 }
