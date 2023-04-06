@@ -364,7 +364,7 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
     if (!get_was_visited(tour, i)) {
         double new_cost = compute_updated_lower_bound(tour->cost, tour->current_city, i);
 
-        if (!(new_cost > solution_cost)) {
+        if (new_cost <= algo_state->solution->cost) {
             struct Tour *new_tour = go_to_city(tour, i, algo_state, new_cost);
             int finished = get_visited_all_cities(new_tour, algo_state);
             if (!finished) {
@@ -372,21 +372,26 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
                 queue_push(algo_state->queue, new_tour);
             } else {
                 double final_cost = compute_updated_lower_bound(new_tour->cost, i, 0);
-                int current_tour_is_better = final_cost < solution_cost;
+                int current_tour_is_better = final_cost < algo_state->solution->cost; //solution_cost;
                 if (current_tour_is_better) {
                     (*tours_created)++;
                     free_tour(algo_state->solution);
                     algo_state->solution = go_to_city(new_tour, 0, algo_state, final_cost);
                     solution_cost = final_cost;
+
                     //MPI_ibcast(&solution_cost, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+                    /*
                     MPI_Status status;
                     int flag;
-                    if(MPI_Test(&sol_requests[id], &flag, &status) != MPI_PENDING) {
+                    if(MPI_Test(&sol_requests[id], &flag, &status) != MPI_ERR_PENDING) {
                         // can only broadcast if previous broadcast finished
                         MPI_Ibcast(&sol_values[id] , 1, MPI_DOUBLE, id, MPI_COMM_WORLD, &sol_requests[id]); // the variable being broadcasted is a pointer, as so it cannot be in the stack!
                         // TODO either wait for the previous broadcast to finish, or sequechule send... (OMP task?)
                     }
-                    queue_trim(algo_state->queue, solution_cost);
+                     */
+                    printf("Solution found with cost %f", final_cost);
+
+                    queue_trim(algo_state->queue, algo_state->solution->cost);
                 } else {
                     free(new_tour); // not free_tour because we only want to delete this piece, and do not wnat to look to prev step
                 }
@@ -435,19 +440,29 @@ void tscp(struct AlgorithmState *algo_state) {
 
             // check if any of the processes has a better solution, iterate over all processes
             // we use this if to periodically check, a new if would consume more resources...
+            /*
             for(int i=0; i < nr_processes; i++){
                 MPI_Status status;
                 int flag;
                 if(i == id) continue; // do not send to self (we already have the value)
-                MPI_Ibcast(&volatile_solution_cost , 1, MPI_DOUBLE, i, MPI_COMM_WORLD, &sol_requests[i]);
-                if(MPI_Test(&solution_cost_request, &flag, &status) == MPI_SUCCESS) {
+                if(MPI_Test(&sol_requests[i], &flag, &status) == MPI_SUCCESS) {
+                    if(sol_values[i] < solution_cost){
+                        solution_cost = volatile_solution_cost;
+                        printf("Updated solution cost on process %d to %f on second verification", id, sol_values[i]);
+                    }
+                }
+                if(MPI_Test(&sol_requests[i], &flag, &status) != MPI_ERR_PENDING) {
+                    MPI_Ibcast(&volatile_solution_cost , 1, MPI_DOUBLE, i, MPI_COMM_WORLD, &sol_requests[i]);
+                }
+                if(MPI_Test(&sol_requests[i], &flag, &status) == MPI_SUCCESS) {
                     if(sol_values[i] < solution_cost){
                         solution_cost = volatile_solution_cost;
                         printf("Updated solution cost on process %d to %f", id, sol_values[i]);
                     }
-                    printf("Received value %d from process %d\n", value, status.MPI_SOURCE);
+                    //printf("Received value %f from process %d(%d). Current solution cost: %f\n", sol_values[i], status.MPI_SOURCE,i, algo_state->solution->cost);
                 }
             }
+             */
 
 
             continue;
@@ -541,37 +556,39 @@ void dealloc_data() {
     free(cities);
 }
 
-void handle_new_solution(MPI_Comm comm, int err_code, void *data, void *attr) {
-    double value = *((double*) data);
-    if(value < solution_cost){
-        solution_cost = value;
-    }
-    printf("Received value: %d\n", value);
-}
 
-int err_key;
-MPI_Errhandler err_handler;
+
+
+
+
 int main(int argc, char *argv[]) {
     double exec_time;
     struct AlgorithmState algo_state;
     parse_inputs(argc, argv, &algo_state);
+    /*
     MPI_Init (&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &nr_processes);
+    // initialize all the requests
+    for (int i = 0; i < nr_processes; ++i) {
+        MPI_Ibcast(&sol_values[i], 1, MPI_DOUBLE, i, MPI_COMM_WORLD, &sol_requests[i]);
+    }
+
     MPI_Barrier(MPI_COMM_WORLD);
 
     exec_time = -MPI_Wtime();
     MPI_Comm_rank (MPI_COMM_WORLD, &id);
     MPI_Comm_size (MPI_COMM_WORLD, &p);
 
+     */
 //exec_time = -omp_get_wtime();
     algo_state.queue = queue_create((char (*)(void *, void *)) NULL);
     tscp(&algo_state);
 
 //exec_time += omp_get_wtime();
-exec_time += MPI_Wtime();
+//exec_time += MPI_Wtime();
     fprintf(stderr, "%.1fs\n", exec_time);
     print_result(&algo_state);
     queue_delete(algo_state.queue);
     dealloc_data();
-    MPI_Finalize();
+    //MPI_Finalize();
 }
