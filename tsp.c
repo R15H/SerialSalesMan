@@ -285,7 +285,7 @@ void print_result(struct AlgorithmState *algo_state) {
     int cities_visited = algo_state->number_of_cities + 1;
     int values[50]; // max 50 cities
 
-    printf("%.1f\n", algo_state->solution->cost);
+    printf("%.1f\n", algo_state->solution->cost*2);
 
     for (int i = cities_visited - 1; i >= 0; i--) {
         values[i] = step->current_city;
@@ -320,23 +320,26 @@ double get_global_lower_bound(int number_of_cities, struct city *cities) {
 
 inline double compute_updated_lower_bound(double lower_bound, unsigned int source_city, unsigned int destination_city) {
     double jump_cost = get_cost_from_city_to_city(source_city, destination_city);
-    int comp_1 = jump_cost >= cities[source_city].min_cost2;
-    double ct = (comp_1) * cities[source_city].min_cost2
-                + (comp_1 == 0) * cities[source_city].min_cost;
-    int comp_2 = jump_cost >= cities[source_city].min_cost2;
+    int comp_1 = jump_cost >= cities[source_city].min_cost;
+    int comp_2 = jump_cost >= cities[destination_city].min_cost;
+
+    //if(!comp_1 && !comp_2) return lower_bound + jump_cost - cities[source_city].min_cost2 - cities[destination_city].min_cost2;
+    double ct = (comp_1) * cities[source_city].min_cost
+                + (comp_1 == 0) * cities[source_city].min_cost2;
     double cf =
-            (comp_2) * cities[destination_city].min_cost2 +
-            (comp_2 == 0) * cities[destination_city].min_cost;
+            (comp_2) * cities[destination_city].min_cost +
+            (comp_2 == 0) * cities[destination_city].min_cost2;
     return lower_bound + jump_cost - (ct + cf) ;
 }
 
-inline struct Tour *go_to_city(struct Tour *tour, short city_id, struct AlgorithmState *algo_state, double cost) {
+inline struct Tour *go_to_city(struct Tour *tour, short city_id, struct AlgorithmState *algo_state, double lb) {
     // create a new tour and convert the current tour to a step middle
     struct Tour *new_tour = (struct Tour *) get_clean_step();
     new_tour->current_city = city_id;
     new_tour->nr_visited = tour->nr_visited + 1;
     new_tour->cities_visited = tour->cities_visited | binary_masks[city_id];
-    new_tour->cost = cost;
+    new_tour->cost = tour->cost + get_cost_from_city_to_city(tour->current_city, city_id);
+    new_tour->lb = lb;
     new_tour->previous_step = (struct step_middle *) tour;
     return new_tour;
 }
@@ -351,22 +354,23 @@ inline struct Tour *go_to_city(struct Tour *tour, short city_id, struct Algorith
 void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_state, int *tours_created){
     int i = destination;
     if (!get_was_visited(tour, i)) {
-        double new_cost = compute_updated_lower_bound(tour->cost, tour->current_city, i);
+        double new_lb = compute_updated_lower_bound(tour->cost, tour->current_city, i);
 
-        if (!(new_cost > algo_state->solution->cost)) {
-            struct Tour *new_tour = go_to_city(tour, i, algo_state, new_cost);
+        if (!(new_lb > algo_state->solution->lb)) {
+            struct Tour *new_tour = go_to_city(tour, i, algo_state, new_lb);
             int finished = get_visited_all_cities(new_tour, algo_state);
             if (!finished) {
                 (*tours_created)++;
                 queue_push(algo_state->queue, new_tour);
             } else {
-                double final_cost = compute_updated_lower_bound(new_tour->cost, i, 0);
-                int current_tour_is_better = final_cost < algo_state->solution->cost;
+                double final_lb = compute_updated_lower_bound(new_tour->lb, i, 0);
+                double final_cost = new_tour->cost + get_cost_from_city_to_city(i, 0);
+                int current_tour_is_better = final_cost < algo_state->solution->cost; //cost;
                 if (current_tour_is_better) {
                     (*tours_created)++;
                     free_tour(algo_state->solution);
-                    algo_state->solution = go_to_city(new_tour, 0, algo_state, final_cost);
-                    queue_trim(algo_state->queue, final_cost);
+                    algo_state->solution = go_to_city(new_tour, 0, algo_state, final_lb);
+                    queue_trim(algo_state->queue, final_lb);
                 } else {
                     free(new_tour); // not free_tour because we only want to delete this piece, and do not wnat to look to prev step
                 }
@@ -396,13 +400,15 @@ void tscp(struct AlgorithmState *algo_state) {
     algo_state->solution->cost = algo_state->max_lower_bound;
     algo_state->solution->cities_visited = algo_state->all_cities_visited_mask;
     algo_state->solution->current_city = 0;
+    algo_state->solution->lb = algo_state->max_lower_bound;
     algo_state->solution->previous_step = NULL;
 
     struct Tour *first_step = (struct Tour *) get_clean_step();
     first_step->current_city = 0;
     first_step->cities_visited = 1;
-    first_step->cost = get_global_lower_bound(algo_state->number_of_cities, cities);
+    first_step->lb = get_global_lower_bound(algo_state->number_of_cities, cities);
     first_step->previous_step = NULL;
+    first_step->cost = 0;
 
     queue_push(algo_state->queue, first_step);
 
@@ -430,17 +436,23 @@ void place_cost_in_city(int city_source, int city_destination, double cost, int 
         current_city->min_cost = DOUBLE_MAX;
         current_city->min_cost2 = DOUBLE_MAX;
     }
-    if (current_city->min_cost > cost)
-        current_city->min_cost = cost;
-    else if (current_city->min_cost2 > cost)
-        current_city->min_cost2 = cost;
-    (current_city->cost)[city_destination] = cost*2;
+    if (current_city->min_cost > cost/2){
+        current_city->min_cost2 = current_city->min_cost;
+        current_city->min_cost = cost/2;
+    }
+    else if (current_city->min_cost2 > cost/2)
+        current_city->min_cost2 = cost/2;
+    (current_city->cost)[city_destination] = cost;
 
+    /*
     current_city = &cities[city_destination];
-    if (current_city->min_cost > cost)
-        current_city->min_cost = cost;
-    else if (current_city->min_cost2 > cost)
-        current_city->min_cost2 = cost;
+    if (current_city->min_cost > cost/2){
+        current_city->min_cost2 = current_city->min_cost;
+        current_city->min_cost = cost/2;
+    }
+    else if (current_city->min_cost2 > cost/2)
+        current_city->min_cost2 = cost/2;
+        */
 }
 
 // Initializes the AlgorithmState variable
