@@ -6,8 +6,8 @@
 
 
 struct city {
-    double min_cost;
-    double min_cost2;
+    int min_cost;
+    int min_cost2;
     double *cost;
 };
 
@@ -32,7 +32,8 @@ struct Tour {
     int stepID;
     int nr_visited;
     struct step_middle *previous_step;
-    double cost;
+    double cost; //lb
+    double actual_cost;
     unsigned int cities_visited; // bit map of the cities visited
 };
 
