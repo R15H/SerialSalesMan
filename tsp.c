@@ -313,12 +313,26 @@ void free_tour(struct Tour *tour) {
     free(tour);
 }
 
-double get_global_lower_bound(int number_of_cities, struct city *cities) {
-    double lower_bound = 0;
+int get_global_lower_bound(int number_of_cities, struct city *cities) {
+    int lower_bound = 0; // -0.5
     for (int i = 0; i < number_of_cities; i++) lower_bound = cities[i].min_cost + cities[i].min_cost2;
     return lower_bound ;
 }
 
+inline int compute_updated_lower_bound(int lower_bound, unsigned int source_city, unsigned int destination_city) {
+    int jump_cost = (int) get_cost_from_city_to_city(source_city, destination_city);
+    int comp_1 = jump_cost >= cities[source_city].min_cost;
+    int comp_2 = jump_cost >= cities[destination_city].min_cost;
+
+    //if(!comp_1 && !comp_2) return lower_bound + jump_cost - cities[source_city].min_cost2 - cities[destination_city].min_cost2;
+    int ct = (comp_1) * cities[source_city].min_cost
+                + (comp_1 == 0) * cities[source_city].min_cost2;
+    int cf =
+            (comp_2) * cities[destination_city].min_cost +
+            (comp_2 == 0) * cities[destination_city].min_cost2;
+    return lower_bound + jump_cost - (ct + cf) ;
+}
+/*
 inline double compute_updated_lower_bound(double lower_bound, unsigned int source_city, unsigned int destination_city) {
     double jump_cost = get_cost_from_city_to_city(source_city, destination_city);
     int comp_1 = jump_cost >= cities[source_city].min_cost2;
@@ -330,7 +344,7 @@ inline double compute_updated_lower_bound(double lower_bound, unsigned int sourc
             (comp_2 == 0) * cities[destination_city].min_cost;
     return lower_bound + jump_cost - (ct + cf) ;
 }
-
+*/
 inline struct Tour *go_to_city(struct Tour *tour, short city_id, struct AlgorithmState *algo_state, double cost) {
     // create a new tour and convert the current tour to a step middle
     struct Tour *new_tour = (struct Tour *) get_clean_step();
@@ -434,9 +448,18 @@ void place_cost_in_city(int city_source, int city_destination, double cost, int 
         for (int i = 0; i < number_of_cities; i++) {
             (current_city->cost)[i] = DOUBLE_MAX / 4;
         }
-        current_city->min_cost = DOUBLE_MAX;
-        current_city->min_cost2 = DOUBLE_MAX;
+        current_city->min_cost = INT_MAX;
+        current_city->min_cost2 = INT_MAX;
     }
+    if (current_city->min_cost > cost/2){
+        current_city->min_cost2 = current_city->min_cost;
+        current_city->min_cost = (int) cost/2;
+    }
+    else if (current_city->min_cost2 > cost/2)
+        current_city->min_cost2 = (int) cost/2;
+    (current_city->cost)[city_destination] = cost;
+
+    /*
     if (current_city->min_cost > cost)
         current_city->min_cost = cost;
     else if (current_city->min_cost2 > cost)
@@ -448,6 +471,7 @@ void place_cost_in_city(int city_source, int city_destination, double cost, int 
         current_city->min_cost = cost;
     else if (current_city->min_cost2 > cost)
         current_city->min_cost2 = cost;
+        */
 }
 
 // Initializes the AlgorithmState variable
