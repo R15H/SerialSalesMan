@@ -14,6 +14,8 @@ struct city {
 struct city *cities;
 
 #define MAX_CITIES 32
+#define MAX_THREADS 12
+
 struct city CitiesTable[MAX_CITIES];
 unsigned int binary_masks[MAX_CITIES];
 unsigned int all_cities_visited_mask;
