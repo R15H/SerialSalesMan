@@ -376,7 +376,14 @@ void scatter_solution(double solution_cost){
 
 double queue_health[64];
 double queue_health_requests[64];
+double health_deviation[64];
+struct remote_proc {
+    double q_health;
+    double q_health_deviation;
+};
+struct remote_proc remotes[64];
 
+#define QUEUE_HEALTH_STATUS 10
 
 void load_balance(priority_queue_t *queue){ // reports the queue healthy and executes orders from the master if there are any
     // iterate through the first 100 items of the queue and average their LB
@@ -385,7 +392,23 @@ void load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
     for(; i < 100 && queue->size > i ; i++ ){
         sum += (queue->buffer[i])->lb;
     }
-    queue_health[id] = sum/i;
+    remotes[id].q_health = sum/i;
+    MPI_Sendv(&sum,1,MPI_DOUBLE,0, QUEUE_HEALTH_STATUS,MPI_COMM_WORLD);
+
+    if(id == 0){
+        double total = 0;
+        // get health checks for all the processes
+        for(int i =0; i < nr_processes; i++){
+            MPI_Recv(&remotes[i].q_health,1, MPI_DOUBLE, i, QUEUE_HEALTH_STATUS, MPI_COMM_WORLD);
+            total += queue_health[i];
+        }
+        double average = total/nr_processes;
+        for (int i = 0; i < nr_processes; ++i) {
+            remotes[i].q_health_deviation = queue_health[i] - average;
+        }
+        //
+
+    }
 
 
 }
