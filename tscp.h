@@ -11,6 +11,7 @@ struct city {
     double *cost;
 };
 
+
 struct city *cities;
 
 #define MAX_CITIES 32

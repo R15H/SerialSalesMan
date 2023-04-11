@@ -378,6 +378,7 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
     }
 }
 
+
 inline int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
     int tours_created = 0;
     int loops = algo_state->number_of_cities - 1;
