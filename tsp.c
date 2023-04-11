@@ -23,11 +23,10 @@
 
 int nr_processes = 0;
 // requests for sending the solution
-MPI_Request sol_requests[64];
+MPI_Request sol_requests[64] = {0};
 double sol_values[64];
 
 // variables for receiving soluitons
-double volatile_solution_cost;
 double solution_cost;
 MPI_Request solution_cost_request_send;
 int p,id;
@@ -359,14 +358,17 @@ struct Tour *go_to_city(struct Tour *tour, short city_id, struct AlgorithmState 
            //step_worst_than_found_solution;
 //}
 
+double current_solution;
 void scatter_solution(double solution_cost){
     MPI_Status status;
     int flag;
     sol_values[id] = solution_cost;
-    printf("id: %d scattering a solution with cost: %f", id, solution_cost);
-    if(MPI_Test(&sol_requests[id], &flag, &status) != MPI_ERR_PENDING) {
+    printf("id: %d scattering a solution with cost: %f\n", id, solution_cost);
+    fflush(stdout);
+    current_solution = solution_cost;
+    if(sol_requests[id] != NULL && MPI_Test(&sol_requests[id], &flag, &status) != MPI_ERR_PENDING) {
         // can only broadcast if previous broadcast finished
-        MPI_Ibcast(&sol_values[id] , 1, MPI_DOUBLE, id, MPI_COMM_WORLD, &sol_requests[id]); // the variable being broadcasted is a pointer, as so it cannot be in the stack!
+        if(flag)MPI_Ibcast(&current_solution , 1, MPI_DOUBLE, id, MPI_COMM_WORLD, &sol_requests[id]); // the variable being broadcasted is a pointer, as so it cannot be in the stack!
         // TODO either wait for the previous broadcast to finish, or sequechule send... (OMP task?)
     }
 }
@@ -436,6 +438,7 @@ int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
     return tours_created;
 }
 
+double vol_cost[64];
 void gather_best_solution(){
     // check if any of the processes has a better solution, iterate over all processes
     // we use this if to periodically check, a new if would consume more resources...
@@ -443,13 +446,12 @@ void gather_best_solution(){
         MPI_Status status;
         int flag;
         if(i == id) continue; // do not send to self (we already have the value)
-        MPI_Ibcast(&volatile_solution_cost , 1, MPI_DOUBLE, i, MPI_COMM_WORLD, &sol_requests[i]);
-        if(MPI_Test(&solution_cost_request_send, &flag, &status) == MPI_SUCCESS) {
+        MPI_Ibcast(&sol_values[i] , 1, MPI_DOUBLE, i, MPI_COMM_WORLD, &sol_requests[i]);
+        if(MPI_Test(&sol_requests[i], &flag, &status) == MPI_SUCCESS) {
             if(sol_values[i] < solution_cost){
-                solution_cost = volatile_solution_cost;
+                solution_cost = vol_cost[i];
                 printf("Updated solution cost on process %d to %f", id, sol_values[i]);
             }
-            printf("Received value %f from process %d\n", volatile_solution_cost, status.MPI_SOURCE);
         }
     }
 }
@@ -473,14 +475,43 @@ void tscp(struct AlgorithmState *algo_state) {
     queue_push(algo_state->queue, first_step);
 
     struct Tour *current_tour;
+    int i = 0; // nr of tours to analyse before spliting the load
     while ((current_tour = queue_pop(algo_state->queue))) {
         int newToursCreated = analyseTour(current_tour, algo_state);
+        i++;
         if (newToursCreated == 0) {
             free_tour(current_tour);
-            gather_best_solution();
             continue;
         }
         ((struct step_middle *) current_tour)->ref_counter = newToursCreated;
+        if(i == 1000) break;
+    }
+
+
+    priority_queue_t *final_queue = queue_create(NULL);
+    int current_proc = 0;
+    int direction = 1;
+    while ((current_tour = queue_pop(algo_state->queue))) {
+        printf("Current proc %d\n", current_proc);
+        fflush(stdout);
+        if(current_proc == id) queue_push(final_queue,current_tour);
+        else free_tour(current_tour);
+        if(current_proc == nr_processes-1) direction = -direction;
+        current_proc += direction;
+    }
+    queue_delete(algo_state->queue);
+    algo_state->queue = final_queue;
+
+    i =0;
+    while ((current_tour = queue_pop(algo_state->queue))) {
+        int newToursCreated = analyseTour(current_tour, algo_state);
+        i++;
+        if (newToursCreated == 0) {
+            free_tour(current_tour);
+            continue;
+        }
+        ((struct step_middle *) current_tour)->ref_counter = newToursCreated;
+        if(i == 1000) gather_best_solution();
     }
 }
 
@@ -573,9 +604,9 @@ int main(int argc, char *argv[]) {
     parse_inputs(argc, argv, &algo_state);
     MPI_Init (&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &nr_processes);
-    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Comm_rank (MPI_COMM_WORLD, &id);
     MPI_Comm_size (MPI_COMM_WORLD, &p);
+    MPI_Barrier(MPI_COMM_WORLD);
 
     printf("Process %d ready, %d processes in total", id, p);
     exec_time = -MPI_Wtime();
