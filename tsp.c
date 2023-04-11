@@ -378,7 +378,7 @@ double queue_health[64];
 double queue_health_requests[64];
 
 
-void load_balance(priority_queue_t *queue){
+void load_balance(priority_queue_t *queue){ // reports the queue healthy and executes orders from the master if there are any
     // iterate through the first 100 items of the queue and average their LB
     double sum = 0;
     int i=0;
@@ -439,7 +439,8 @@ int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
 }
 
 double vol_cost[64];
-void gather_best_solution(){
+int process_with_solution;
+void gather_best_solution(struct AlgorithmState * algo_state){
     // check if any of the processes has a better solution, iterate over all processes
     // we use this if to periodically check, a new if would consume more resources...
     for(int i=0; i < nr_processes; i++){
@@ -448,8 +449,10 @@ void gather_best_solution(){
         if(i == id) continue; // do not send to self (we already have the value)
         MPI_Ibcast(&sol_values[i] , 1, MPI_DOUBLE, i, MPI_COMM_WORLD, &sol_requests[i]);
         if(MPI_Test(&sol_requests[i], &flag, &status) == MPI_SUCCESS) {
-            if(sol_values[i] < solution_cost){
-                solution_cost = vol_cost[i];
+            if(sol_values[i] < algo_state->solution->cost){
+                algo_state->solution->cost = sol_values[i];
+                process_with_solution = i;
+                //solution_cost = vol_cost[i];
                 printf("Updated solution cost on process %d to %f", id, sol_values[i]);
             }
         }
@@ -484,19 +487,19 @@ void tscp(struct AlgorithmState *algo_state) {
             continue;
         }
         ((struct step_middle *) current_tour)->ref_counter = newToursCreated;
-        if(i == 1000) break;
+        if(i > 1000) break;
     }
 
 
     priority_queue_t *final_queue = queue_create(NULL);
     int current_proc = 0;
-    int direction = 1;
+    int direction = -1;
     while ((current_tour = queue_pop(algo_state->queue))) {
         printf("Current proc %d\n", current_proc);
         fflush(stdout);
         if(current_proc == id) queue_push(final_queue,current_tour);
         else free_tour(current_tour);
-        if(current_proc == nr_processes-1) direction = -direction;
+        if(current_proc == nr_processes-1 || current_proc == 0) direction = -direction;
         current_proc += direction;
     }
     queue_delete(algo_state->queue);
@@ -511,7 +514,11 @@ void tscp(struct AlgorithmState *algo_state) {
             continue;
         }
         ((struct step_middle *) current_tour)->ref_counter = newToursCreated;
-        if(i == 1000) gather_best_solution();
+        if(i > 10000) {
+            gather_best_solution(algo_state);
+            load_balance(algo_state->queue);
+            i = 0;
+        }
     }
 }
 
