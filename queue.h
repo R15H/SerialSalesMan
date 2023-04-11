@@ -4,13 +4,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "tscp.h"
+#include "queue.h"
 
 
+typedef struct Tour Tour;
 // A queue where the elements are stored in an increasing order.
 // This implementation uses a binary heap.
 typedef struct
 {
-	void** buffer;
+	Tour** buffer;
 	size_t size;
 	size_t max_size;
 	char (*cmpfn)(void *, void *);
