@@ -34,6 +34,7 @@ struct Tour {
     struct step_middle *previous_step;
     double cost;
     unsigned int cities_visited; // bit map of the cities visited
+    double lb;
 };
 
 
