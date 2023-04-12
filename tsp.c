@@ -21,6 +21,7 @@
 
 #pragma runtime_checks("", off)
 
+
 struct SerialTour {
     unsigned short cities_visited;
     int nr_visited;
@@ -31,6 +32,7 @@ struct SerialTour {
 };
 
 MPI_Datatype MPI_SerialTour;
+MPI_Datatype MPI_Order;
 
 int nr_processes = 0;
 // requests for sending the solution
@@ -445,22 +447,26 @@ void distribute_load(){
 }
 
 
-double *packets_sums = NULL;
 
 int compare(const double *a, const double *b){
     return *a > *b;
 }
+
+
 
 struct order {
     int from;
     int to;
 };
 
+
+MPI_Type MPI_Health_Packet;
 struct queue_health_packet {
    int from;
    double sum;
-}
+};
 
+struct queue_health_packet  *packets_sums = NULL;
 #define MAX_ORDERS_PER_PROCESS 10
 void load_balance(priority_queue_t *queue){ // reports the queue healthy and executes orders from the master if there are any
     //static Orders orders[nr_processes];
@@ -469,47 +475,37 @@ void load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
     // iterate through the first 100 items of the queue and average their LB
 
 
-    int order_recv[MAX_PROCESSES][MAX_ORDERS_PER_PROCESS];
-    int order_recv_num[MAX_PROCESSES];
-    int order_send[MAX_PROCESSES][MAX_ORDERS_PER_PROCESS];
-    int order_send_num[MAX_PROCESSES];
+    int order_recv[MAX_PROCESSES][MAX_ORDERS_PER_PROCESS] =    {0};
+    int order_recv_num[MAX_PROCESSES]  = {0}
+    int order_send[MAX_PROCESSES][MAX_ORDERS_PER_PROCESS] = {0};
+    int order_send_num[MAX_PROCESSES] = {0};
 
     struct queue_health_packet sum[MAX_QUEUE_PACKETS+1];
-    int i=-1;
-    int j = 10;
-
-    // do all sends async
-    // do receives syncronously
-
 
     // Access the health of each queue packet
+    int j = 0;
+    int i = 0;
     while(j < MAX_QUEUE_PACKETS) {
-        j +=1;
         sum[j].from = id;
+        sum[j].sum = 0;
         for(; i < QUEUE_PACKETS_SIZE && queue->size > i ; i++ ){
             sum[j].sum += (queue->buffer[i])->lb;
         }
-        if(queue->size<i) break;
+        j++;
     }
 
-
     // Get all queue packets from all processes
-    MPI_Gather( &sum, MAX_QUEUE_PACKETS , MPI_DOUBLE, packets_sums, MAX_QUEUE_PACKETS, MPI_DOUBLE, 0, MPI_COMM_WORLD); // TODO check optimization diferent values for counts
+    MPI_Gather( &sum, MAX_QUEUE_PACKETS , MPI_Health_Packet, packets_sums, MAX_QUEUE_PACKETS, MPI_Health_Packet, 0, MPI_COMM_WORLD); // TODO check optimization diferent values for counts
 
     // Match queue packets with each other
-    qsort(packets_sums, MAX_QUEUE_PACKETS * nr_processes, 2*sizeof(double), (int (*)(const void *, const void *)) compare);
+    qsort(packets_sums, MAX_QUEUE_PACKETS * nr_processes, sizeof(struct queue_health_packet), (int (*)(const void *, const void *)) compare);
+
     int start = 0;
     int end = 0;
     for(  ;start >= end; start++,end--) {
-        order_recv[
-                (int)packets_sums[order_nr++]
-                ][order_nr] = packets_sums[start+1];
-
-
-        orders[ packets_sums[start+1]]    [order_nr++]
-
-        new_order(, packets_sums[end-1]);
-
+        int from  = packets_sums[start].from;
+        order_send[from][order_send_num[from]++] = packets_sums[end].from;
+        order_recv[packets_sums[end].from][order_recv_num[packets_sums[end].from]++] = packets_sums[start].from;
     }
 
 #define QUEUE_DISTRIBUTION_ORDERS_SEND 2193884
@@ -879,33 +875,7 @@ void dealloc_data() {
 struct SerialTour *send_solutions;
 struct SerialTour *receive_solutions;
 
-
-int main(int argc, char *argv[]) {
-    double exec_time;
-    struct AlgorithmState algo_state;
-    parse_inputs(argc, argv, &algo_state);
-
-
-    MPI_Init (&argc, &argv);
-    MPI_Comm_size(MPI_COMM_WORLD, &nr_processes);
-    MPI_Comm_rank (MPI_COMM_WORLD, &id);
-    MPI_Comm_size (MPI_COMM_WORLD, &p);
-
-    if(id == 0){
-        packets_sums = malloc(sizeof (double)* QUEUE_PACKETS_SIZE* MAX_QUEUE_PACKETS*nr_processes);
-    }
-
-
-    printf("Nr of proccesses %d\n", nr_processes);
-
-    send_solutions = malloc((sizeof(struct SerialTour) +
-            ((algo_state.number_of_cities-1) * sizeof(unsigned short) )
-            ) * nr_processes);
-    receive_solutions = malloc((sizeof(struct SerialTour) +
-            ((algo_state.number_of_cities-1) * sizeof(unsigned short))
-            ) * nr_processes);
-
-    MPI_Datatype MPI_SerialTour;
+void create_mpi_struct_tour(){
     int block_lengths[6] = {1, 1, 1, 1, 1, algo_state.number_of_cities};
     MPI_Aint displacements[6];
     displacements[0] = 0;
@@ -919,6 +889,62 @@ int main(int argc, char *argv[]) {
     MPI_Datatype types[6] = {MPI_UNSIGNED_SHORT, MPI_INT, MPI_INT, MPI_DOUBLE, MPI_DOUBLE, MPI_SHORT};
     MPI_Type_create_struct(6, block_lengths, displacements, types, &MPI_SerialTour);
     MPI_Type_commit(&MPI_SerialTour);
+}
+
+void create_mpi_struct_order(){
+    // Create a type for the struct order
+    MPI_Aint offsets[2];
+    offsets[0] = 0;
+    offsets[1] = sizeof(int);
+    int block_lengths[2] = {1, 1};
+    MPI_Datatype types2[2] = {MPI_INT, MPI_INT};
+    MPI_Type_create_struct(2, block_lengths, offsets, types2, &MPI_Order);
+    MPI_Type_commit(&MPI_Order);
+}
+
+void create_mpi_struct_packet(){
+    // Create a type for the struct order
+    MPI_Aint offsets[2];
+    offsets[0] = 0;
+    offsets[1] = sizeof(double);
+    int block_lengths[2] = {1, 1};
+    MPI_Datatype types2[2] = {MPI_INT, MPI_DOUBLE};
+    MPI_Type_create_struct(2, block_lengths, offsets, types2, &MPI_Packet);
+    MPI_Type_commit(&MPI_Health_Packet);
+}
+
+int main(int argc, char *argv[]) {
+    double exec_time;
+    struct AlgorithmState algo_state;
+    parse_inputs(argc, argv, &algo_state);
+
+
+    MPI_Init (&argc, &argv);
+    MPI_Comm_size(MPI_COMM_WORLD, &nr_processes);
+    MPI_Comm_rank (MPI_COMM_WORLD, &id);
+    MPI_Comm_size (MPI_COMM_WORLD, &p);
+
+    if(id == 0){
+        packets_sums = malloc(sizeof (struct queue_health_packet)* MAX_QUEUE_PACKETS*nr_processes);
+    }
+
+
+    printf("Nr of proccesses %d\n", nr_processes);
+
+    send_solutions = malloc((sizeof(struct SerialTour) +
+            ((algo_state.number_of_cities-1) * sizeof(unsigned short) )
+            ) * nr_processes);
+    receive_solutions = malloc((sizeof(struct SerialTour) +
+            ((algo_state.number_of_cities-1) * sizeof(unsigned short))
+            ) * nr_processes);
+
+
+
+    create_mpi_struct_order();
+    create_mpi_struct_tour();
+    create_mpi_struct_packet();
+
+
 
 
 
