@@ -6,6 +6,7 @@
 #include "tscp.h"
 #include <stdlib.h>
 #include <mpi.h>
+#include <stdbool.h>
 
 #define ERROR(message) fprintf(stderr, #message);
 
@@ -219,7 +220,7 @@ void pq(FILE *file, struct Tour * node){
 
 void queue_trim(priority_queue_t *queue, double maxCost){
     //printf("Solution found... %d", rand());
-    if(queue->size < 1000000){
+    if(queue->size < 1000){
         return;
     }
     for(int j = queue->size/2; j< queue->size-1; j += 2){
@@ -294,6 +295,24 @@ int power2(int x, unsigned int y) {
     else
         return x * temp * temp;
 }
+
+void serializeTour(struct Tour *tour, struct SerialTour *serial_tour){
+    serial_tour->cities_visited =  tour->cities_visited;
+    serial_tour->nr_visited = tour->nr_visited;
+    serial_tour->cities_visited = tour->cities_visited;
+    serial_tour->current_city = tour->current_city;
+    serial_tour->cost = tour->cost;
+    serial_tour->lb = tour->lb;
+    struct step_middle *step = tour->previous_step;
+    int i = tour->nr_visited;
+    while(step != NULL){
+        assert(i >=0 );
+        serial_tour->cities[i] = step->current_city;
+        i--;
+        step = step->previous_step;
+    }
+}
+
 
 void print_result(struct AlgorithmState *algo_state, struct SerialTour *tour) {
     if (algo_state->solution->cost == algo_state->max_lower_bound) {
@@ -373,46 +392,86 @@ struct Tour *go_to_city(struct Tour *tour, short city_id, struct AlgorithmState 
            //step_worst_than_found_solution;
 //}
 
-struct solution_data current_solution;
-#define SOLUTION_FOUND_TO_MASTER 1
+#define SOLUTION_FOUND_TO_MASTER 13456
+
 void scatter_solution(double solution_cost, double sol_lb){
+    static MPI_Request request = NULL;
+    struct solution_data current_solution;
     MPI_Status status;
     int flag;
     sol_values[id] = solution_cost;
+    printf("Solution found by %d with cost: %f\n", id, solution_cost);
     fflush(stdout);
     current_solution.sol_cost = solution_cost;
     current_solution.sol_lb = sol_lb;
-    if(sol_requests[id] != NULL){
-        MPI_Test(&sol_requests[id], &flag, &status);
+    if(request != NULL){
+        MPI_Test(&request, &flag, &status);
         // can only broadcast if previous broadcast finished
         if(flag){
-            MPI_Send(&current_solution , 2, MPI_DOUBLE, 0, SOLUTION_FOUND_TO_MASTER ,MPI_COMM_WORLD);//, &sol_requests[id]); // the variable being broadcasted is a pointer, as so it cannot be in the stack!
+            MPI_Isend(&current_solution , 2, MPI_DOUBLE, 0, SOLUTION_FOUND_TO_MASTER ,MPI_COMM_WORLD, &request);//, &sol_requests[id]); // the variable being broadcasted is a pointer, as so it cannot be in the stack!
             printf("id: %d scattering a solution with cost: %f\n", id, solution_cost);
         }
         // TODO either wait for the previous broadcast to finish, or sequechule send... (OMP task?)
-    }
+    } else MPI_Isend(&current_solution , 2, MPI_DOUBLE, 0, SOLUTION_FOUND_TO_MASTER ,MPI_COMM_WORLD, &request);//, &sol_requests[id]); // the variable being broadcasted is a pointer, as so it cannot be in the stack!
 }
 
 
 double queue_health[64];
 double queue_health_requests[64];
 double health_deviation[64];
-struct remote_proc {
-    double q_health;
-    double q_health_deviation;
-};
-struct remote_proc remotes[64];
+
 
 #define QUEUE_HEALTH_STATUS 10
 
+#define MAX_QUEUE_PACKETS 10
+#define QUEUE_PACKETS_SIZE 50
+struct remote_proc {
+    double q_health[MAX_QUEUE_PACKETS][QUEUE_PACKETS_SIZE];
+    double q_health_deviation[QUEUE_PACKETS_SIZE];
+};
+
+#define MAX_PROCESSES 64
+
+int orders[MAX_PROCESSES];
+
+#define QUEUE_DISTRIBUTE_GIVE 123048921
+struct remote_proc remotes[64];
 void load_balance(priority_queue_t *queue){ // reports the queue healthy and executes orders from the master if there are any
     // iterate through the first 100 items of the queue and average their LB
-    double sum = 0;
-    int i=0;
-    for(; i < 100 && queue->size > i ; i++ ){
-        sum += (queue->buffer[i])->lb;
+    double sum[MAX_QUEUE_PACKETS+1] = {-1};
+    int i=-1;
+    int j = 10;
+
+    bool finished = false;
+    while(j < MAX_QUEUE_PACKETS) {
+        j++;
+        for(; i < QUEUE_PACKETS_SIZE && queue->size > i ; i++ ){
+            sum[j] += (queue->buffer[i])->lb;
+        }
+        if(finished) break;
     }
-    remotes[id].q_health = sum/i;
+    MPI_Send(&sum, j+1, MPI_DOUBLE, 0, QUEUE_HEALTH_STATUS, MPI_COMM_WORLD);
+#define QUEUE_DISTRIBUTION_ORDERS_SEND 2193884
+#define QUEUE_DISTRIBUTION_ORDERS_RECEIVE 2193884
+    MPI_Recv(orders, MAX_PROCESSES, 0, QUEUE_DISTRIBUTION_ORDERS_SEND, MPI_COMM_WORLD);
+    int destination = 0;
+    static struct SerialTour tours_to_send[MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE];
+    static struct SerialTour tours_to_receive[MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE];
+
+    int order_nr = 0;
+    int tour_nr = 0;
+    while(destination != -1){
+        destination = orders[order_nr];
+        serializeTour(queue_pop(queue), &tours_to_send[tour_nr++]);
+
+        MPI_Send(&tours_to_send[order_nr*QUEUE_PACKETS_SIZE] ,QUEUE_PACKETS_SIZE, MPI_SerialTour , destination, QUEUE_DISTRIBUTE_GIVE,MPI_COMM_WORLD);
+        order_nr++;
+    }
+
+
+
+
+    //remotes[id].q_health = sum/i;
     /*
     MPI_Sendv(&sum,1,MPI_DOUBLE,0, QUEUE_HEALTH_STATUS,MPI_COMM_WORLD);
 
@@ -442,7 +501,7 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
         double jump_cost = get_cost_from_city_to_city(tour->current_city, i);
         double new_lb = compute_updated_lower_bound(tour->lb, jump_cost,tour->current_city, i);
 
-        if (new_lb <= algo_state->sol_cost) {
+        if (new_lb <= algo_state->sol_lb) {
             struct Tour *new_tour = go_to_city(tour, i, algo_state, new_lb, tour->cost + jump_cost);
             int finished = get_visited_all_cities(new_tour, algo_state);
             if (!finished) {
@@ -458,6 +517,7 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
                     free_tour(algo_state->solution);
                     algo_state->solution = go_to_city(new_tour, 0, algo_state, final_lb,final_cost);
                     algo_state->sol_cost = final_cost;
+                    algo_state->sol_lb = final_lb;
                     scatter_solution(final_cost, final_lb);
                     queue_trim(algo_state->queue, final_cost);
                 } else {
@@ -468,22 +528,6 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
     }
 }
 
-void serializeTour(struct Tour *tour, struct SerialTour *serial_tour){
-    serial_tour->cities_visited =  tour->cities_visited;
-    serial_tour->nr_visited = tour->nr_visited;
-    serial_tour->cities_visited = tour->cities_visited;
-    serial_tour->current_city = tour->current_city;
-    serial_tour->cost = tour->cost;
-    serial_tour->lb = tour->lb;
-    struct step_middle *step = tour->previous_step;
-    int i = tour->nr_visited;
-    while(step != NULL){
-        assert(i >=0 );
-        serial_tour->cities[i] = step->current_city;
-        i--;
-        step = step->previous_step;
-    }
-}
 
 void deserializeTour(struct SerialTour *serialTour, struct Tour *tour){
     // Another option would be to have the tour store a pointer to an array, instead of building the linked list, since the cities visited are only usefull when presenting the solution
@@ -521,48 +565,60 @@ int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
     return tours_created;
 }
 
-double vol_cost[128];
 int process_with_solution;
-struct solution_data solutionData;
 
-MPI_Request gather_solution[64] = {NULL};
 void gather_best_solution(struct AlgorithmState * algo_state){
+    static double vol_cost[128];
+    static struct solution_data solutionData = {999999999999999,9999999999999};
+    static MPI_Request gather_solution[64] = {NULL};
     // check if any of the processes has a better solution, iterate over all processes
     // we use this if to periodically check, a new if would consume more resources...
     static MPI_Request solution_broadcast = NULL;
+    static int first = 0;
     if(id == 0){
 
         // receive solution from all processes using MPI_Irecv
         // if a process has a better solution, update the solution
         for (int i = 0; i < nr_processes; ++i) {
-            if(i == id) continue; // do not send to self (we already have the value)
+            //if(i == id) continue; // do not send to self (we already have the value)
             MPI_Status status;
-            if(gather_solution[i] != NULL) MPI_Wait(&gather_solution[i], status);
-            MPI_Irecv(&vol_cost[i*2], 2, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &status,&gather_solution[64]);
-            if (algo_state->sol_cost > vol_cost[i*2]){
-                solutionData.sol_cost = vol_cost[i*2];
-                solutionData.sol_lb = vol_cost[i*2+1];
-                process_with_solution = i;
-                printf("MASTER new global solution: %f", algo_state->sol_cost);
-            }
+            int flag;
+            int res = 0;
+            if(gather_solution[i] == NULL) MPI_Irecv(&vol_cost[i*2], 2, MPI_DOUBLE, i,  SOLUTION_FOUND_TO_MASTER,MPI_COMM_WORLD,  &gather_solution[i]); // get next receive going
+            else res = MPI_Test(&gather_solution[i], &flag, &status);
 
+            if (flag) {
+                printf("---Received solution from slave %d with cost %.2f--\n", i, vol_cost[i*2]);
+
+                if(algo_state->sol_cost > vol_cost[i*2] && vol_cost[i*2] != 0){
+                    solutionData.sol_cost = vol_cost[i*2];
+                    solutionData.sol_lb = vol_cost[i*2+1];
+                    process_with_solution = i;
+                    printf("UPDATED best solution\n");
+                }
+                MPI_Irecv(&vol_cost[i*2], 2, MPI_DOUBLE, i,  SOLUTION_FOUND_TO_MASTER,MPI_COMM_WORLD,  &gather_solution[i]); // get next receive going
+                //MPI_Irecv(&vol_cost[i*2], 2, MPI_DOUBLE, i, 0, MPI_COMM_WORLD,  &gather_solution[i]); // get next receive going
+            }
         }
 
-        if(solutionData.sol_cost < algo_state->sol_cost) {
+        if(solutionData.sol_cost < algo_state->sol_cost && solutionData.sol_cost != 0) {
             algo_state->sol_cost = solutionData.sol_cost;
             algo_state->sol_lb = solutionData.sol_lb;
+            printf("MASTER new global solution: %f", algo_state->sol_cost);
             MPI_Status status;
             if(solution_broadcast) MPI_Wait(&solution_broadcast, &status);
             MPI_Ibcast(&solutionData , 2,MPI_DOUBLE, 0, MPI_COMM_WORLD, &solution_broadcast);
         } // else do not broadcast, no solution has been found
     }
-    else {
+    else { // a normal process
         MPI_Status status;
         if(solution_broadcast) MPI_Wait(&solution_broadcast, &status);
         MPI_Ibcast(&solutionData , 2,MPI_DOUBLE, 0, MPI_COMM_WORLD, &solution_broadcast);
         if(algo_state->sol_cost > solutionData.sol_cost){
             algo_state->sol_cost = solutionData.sol_cost;
             algo_state->sol_lb = solutionData.sol_lb;
+            printf("Process %d received a solution from master: %f\n", id, algo_state->sol_cost);
+            queue_trim(algo_state->queue, solutionData.sol_cost);
         }
     }
 
@@ -601,6 +657,7 @@ void gather_best_solution(struct AlgorithmState * algo_state){
 
 void tscp(struct AlgorithmState *algo_state) {
     algo_state->sol_cost = algo_state->max_lower_bound*2;;
+    algo_state->sol_lb = algo_state->max_lower_bound;
     algo_state->solution = (struct Tour *) get_clean_step();
     algo_state->solution->cost = algo_state->max_lower_bound*2;
     algo_state->solution->cities_visited = algo_state->all_cities_visited_mask;
@@ -664,6 +721,10 @@ void tscp(struct AlgorithmState *algo_state) {
             i = 0;
         }
     }
+    // wrap up
+    printf("Syncronizing & loadbalancing...\n");
+    gather_best_solution(algo_state);
+    load_balance(algo_state->queue);
 
     // TODO check if more work needs to be done before terminating
 
@@ -764,6 +825,7 @@ int main(int argc, char *argv[]) {
     MPI_Comm_size(MPI_COMM_WORLD, &nr_processes);
     MPI_Comm_rank (MPI_COMM_WORLD, &id);
     MPI_Comm_size (MPI_COMM_WORLD, &p);
+    printf("Nr of proccesses %d\n", nr_processes);
 
     send_solutions = malloc((sizeof(struct SerialTour) +
             ((algo_state.number_of_cities-1) * sizeof(unsigned short) )
@@ -802,9 +864,14 @@ int main(int argc, char *argv[]) {
     // gather algo_state solution from all processes
     serializeTour(algo_state.solution, &send_solutions[id]);
     printf("GATHER ALL SOLUTIONS Sending solution from process %d, cost: %.2f, lb: %.2f\n", id, send_solutions[id].cost, send_solutions[id].lb);
-    MPI_Gather( &send_solutions[0], 1, MPI_SerialTour, receive_solutions, 1, MPI_SerialTour, 0, MPI_COMM_WORLD);
+    exec_time += MPI_Wtime();
+    fprintf(stderr, "%.1fs\n", exec_time);
+    fflush(stderr);
+    MPI_Gather( &send_solutions[id], 1, MPI_SerialTour, receive_solutions, 1, MPI_SerialTour, 0, MPI_COMM_WORLD);
     int best_solution_id = 0;
     printf("ALL GOOD\n");
+
+
     fflush(stdout);
     if(id == 0){
     for(int i =0; i < nr_processes; i++){
@@ -815,8 +882,6 @@ int main(int argc, char *argv[]) {
     }
 
 //exec_time += omp_get_wtime();
-    exec_time += MPI_Wtime();
-    fprintf(stderr, "%.1fs\n", exec_time);
     //if(id == 0) print_result(&algo_state, &receive_solutions[best_solution_id]);
     queue_delete(algo_state.queue);
     dealloc_data();
