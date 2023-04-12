@@ -446,10 +446,6 @@ void distribute_load(){
 
 
 double *packets_sums = NULL;
-struct Orders{
-    int to_receive[nr_processes],
-    int to_send[nr_processess]
-};
 
 int compare(const double *a, const double *b){
     return *a > *b;
@@ -460,37 +456,56 @@ struct order {
     int to;
 };
 
+struct queue_health_packet {
+   int from;
+   double sum;
+}
+
+#define MAX_ORDERS_PER_PROCESS 10
 void load_balance(priority_queue_t *queue){ // reports the queue healthy and executes orders from the master if there are any
     //static Orders orders[nr_processes];
     int orders[nr_processes][MAX_QUEUE_PACKETS*2];
     int order_nr[nr_processes] = {0};
     // iterate through the first 100 items of the queue and average their LB
 
-    double sum[MAX_QUEUE_PACKETS*2+1] = {-1};
+
+    int order_recv[MAX_PROCESSES][MAX_ORDERS_PER_PROCESS];
+    int order_recv_num[MAX_PROCESSES];
+    int order_send[MAX_PROCESSES][MAX_ORDERS_PER_PROCESS];
+    int order_send_num[MAX_PROCESSES];
+
+    struct queue_health_packet sum[MAX_QUEUE_PACKETS+1];
     int i=-1;
     int j = 10;
 
-    for(int l =0; l < MAX_QUEUE_PACKETS+1; l++){
-        printf("%f",sum[l]);
-    }
     // do all sends async
     // do receives syncronously
 
-    bool finished = false;
+
+    // Access the health of each queue packet
     while(j < MAX_QUEUE_PACKETS) {
-        j +=2;
-        sum[j] = id;
+        j +=1;
+        sum[j].from = id;
         for(; i < QUEUE_PACKETS_SIZE && queue->size > i ; i++ ){
-            sum[j] += (queue->buffer[i])->lb;
+            sum[j].sum += (queue->buffer[i])->lb;
         }
-        if(finished) break;
+        if(queue->size<i) break;
     }
+
+
+    // Get all queue packets from all processes
     MPI_Gather( &sum, MAX_QUEUE_PACKETS , MPI_DOUBLE, packets_sums, MAX_QUEUE_PACKETS, MPI_DOUBLE, 0, MPI_COMM_WORLD); // TODO check optimization diferent values for counts
 
+    // Match queue packets with each other
     qsort(packets_sums, MAX_QUEUE_PACKETS * nr_processes, 2*sizeof(double), (int (*)(const void *, const void *)) compare);
     int start = 0;
     int end = 0;
     for(  ;start >= end; start++,end--) {
+        order_recv[
+                (int)packets_sums[order_nr++]
+                ][order_nr] = packets_sums[start+1];
+
+
         orders[ packets_sums[start+1]]    [order_nr++]
 
         new_order(, packets_sums[end-1]);
