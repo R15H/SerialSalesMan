@@ -456,11 +456,11 @@ int compare(const double *a, const double *b){
 }
 
 
-void deserializeTour(struct SerialTour *serialTour, struct Tour *tour){
+struct Tour* deserializeTour(struct SerialTour *serialTour){
     // Another option would be to have the tour store a pointer to an array, instead of building the linked list, since the cities visited are only usefull when presenting the solution
     // Drawbacks:
     // more complex free (one more if), (but deserialization is would be more imidiate)
-    tour = malloc(sizeof(struct Tour));
+    struct Tour *tour = malloc(sizeof(struct Tour));
     tour->cities_visited = serialTour->cities_visited;
     tour->nr_visited = serialTour->nr_visited;
     tour->current_city = serialTour->current_city;
@@ -474,7 +474,8 @@ void deserializeTour(struct SerialTour *serialTour, struct Tour *tour){
         this_step->previous_step = step;
         this_step = step;
     }
-    free(serialTour->cities);
+    //free(serialTour->cities);
+    return tour;
 }
 
 
@@ -485,7 +486,8 @@ struct order {
 };
 
 
-MPI_Type MPI_Health_Packet;
+
+MPI_Datatype MPI_Health_Packet;
 struct queue_health_packet {
    int from;
    double sum;
@@ -498,7 +500,7 @@ void load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
     // iterate through the first 100 items of the queue and average their LB
 
     int order_recv[MAX_PROCESSES][MAX_ORDERS_PER_PROCESS] =    {0};
-    int order_recv_num[MAX_PROCESSES]  = {0}
+    int order_recv_num[MAX_PROCESSES]  = {0};
     int order_send[MAX_PROCESSES][MAX_ORDERS_PER_PROCESS] = {0};
     int order_send_num[MAX_PROCESSES] = {0};
 
@@ -552,15 +554,16 @@ void load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
         }
         // Send the queue packets to the other process
         //MPI_Send(&tours_to_send, MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE, MPI_Tour, to, QUEUE_DISTRIBUTION_ORDERS_SEND, MPI_COMM_WORLD);
-        MPI_Isend(&tours_to_send, MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE, MPI_Tour, to, QUEUE_DISTRIBUTION_ORDERS_SEND, MPI_COMM_WORLD, MPI_REQUEST_NULL);
+        MPI_Request request;
+        MPI_Isend(&tours_to_send, MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE, MPI_SerialTour, to, QUEUE_DISTRIBUTION_ORDERS_SEND, MPI_COMM_WORLD, &request);
     }
 
     // Iterate through each possible receive order
     for(int i = 0; i < MAX_ORDERS_PER_PROCESS; i++){
         int from = order_recv[id][i];
         // Receive the queue packets from the other process
-        static struct SerialTour tours_to_receive[MAX_QUEUE_PACKETS];
-        MPI_Recv(&tours_to_receive, MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE, MPI_Tour, from, QUEUE_DISTRIBUTION_ORDERS_RECEIVE, MPI_COMM_WORLD, MPI_STATUS_IGNORE); // TODO make this async?
+        static struct SerialTour tours_to_receive[MAX_QUEUE_PACKETS]; // TODO AJUST FOR VARIABLE SIZE
+        MPI_Recv(&tours_to_receive, MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE, MPI_SerialTour, from, QUEUE_DISTRIBUTION_ORDERS_RECEIVE, MPI_COMM_WORLD, MPI_STATUS_IGNORE); // TODO make this async?
         // Deserialize the queue packets and push them to the queue
         for(int j = 0; j < MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE; j++){
             struct Tour *tour = deserializeTour(&tours_to_receive[j]);
@@ -871,8 +874,8 @@ void dealloc_data() {
 struct SerialTour *send_solutions;
 struct SerialTour *receive_solutions;
 
-void create_mpi_struct_tour(){
-    int block_lengths[6] = {1, 1, 1, 1, 1, algo_state.number_of_cities};
+void create_mpi_struct_tour(int nr_of_cities){
+    int block_lengths[6] = {1, 1, 1, 1, 1, nr_of_cities};
     MPI_Aint displacements[6];
     displacements[0] = 0;
     displacements[1] = sizeof(short);
@@ -905,7 +908,7 @@ void create_mpi_struct_packet(){
     offsets[1] = sizeof(double);
     int block_lengths[2] = {1, 1};
     MPI_Datatype types2[2] = {MPI_INT, MPI_DOUBLE};
-    MPI_Type_create_struct(2, block_lengths, offsets, types2, &MPI_Packet);
+    MPI_Type_create_struct(2, block_lengths, offsets, types2, &MPI_Health_Packet);
     MPI_Type_commit(&MPI_Health_Packet);
 }
 
@@ -937,7 +940,7 @@ int main(int argc, char *argv[]) {
 
 
     create_mpi_struct_order();
-    create_mpi_struct_tour();
+    create_mpi_struct_tour(algo_state.number_of_cities);
     create_mpi_struct_packet();
 
 
