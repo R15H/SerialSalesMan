@@ -437,6 +437,9 @@ struct remote_proc {
 int orders[MAX_PROCESSES];
 
 #define QUEUE_DISTRIBUTE_GIVE 123048921
+#define QUEUE_DISTRIBUTE_TAKE 123048922
+#define QUEUE_DISTRIBUTION_ORDERS_SEND 21938824
+#define QUEUE_DISTRIBUTION_ORDERS_RECEIVE 21933884
 struct remote_proc remotes[64];
 
 
@@ -453,6 +456,28 @@ int compare(const double *a, const double *b){
 }
 
 
+void deserializeTour(struct SerialTour *serialTour, struct Tour *tour){
+    // Another option would be to have the tour store a pointer to an array, instead of building the linked list, since the cities visited are only usefull when presenting the solution
+    // Drawbacks:
+    // more complex free (one more if), (but deserialization is would be more imidiate)
+    tour = malloc(sizeof(struct Tour));
+    tour->cities_visited = serialTour->cities_visited;
+    tour->nr_visited = serialTour->nr_visited;
+    tour->current_city = serialTour->current_city;
+    tour->cost = serialTour->cost;
+    tour->lb = serialTour->lb;
+    struct step_middle *this_step = (struct step_middle *)  tour;
+    int i = serialTour->nr_visited;
+    for(; i < tour->nr_visited; i--){
+        struct step_middle *step = malloc(sizeof(struct step_middle));
+        step->current_city = serialTour->cities[i];
+        this_step->previous_step = step;
+        this_step = step;
+    }
+    free(serialTour->cities);
+}
+
+
 
 struct order {
     int from;
@@ -466,14 +491,11 @@ struct queue_health_packet {
    double sum;
 };
 
+
 struct queue_health_packet  *packets_sums = NULL;
 #define MAX_ORDERS_PER_PROCESS 10
 void load_balance(priority_queue_t *queue){ // reports the queue healthy and executes orders from the master if there are any
-    //static Orders orders[nr_processes];
-    int orders[nr_processes][MAX_QUEUE_PACKETS*2];
-    int order_nr[nr_processes] = {0};
     // iterate through the first 100 items of the queue and average their LB
-
 
     int order_recv[MAX_PROCESSES][MAX_ORDERS_PER_PROCESS] =    {0};
     int order_recv_num[MAX_PROCESSES]  = {0}
@@ -507,56 +529,44 @@ void load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
             int from = packets_sums[start].from;
             order_send[from][order_send_num[from]++] = packets_sums[end].from;
             order_recv[packets_sums[end].from][order_recv_num[packets_sums[end].from]++] = packets_sums[start].from;
+            // Todo add -1 check to avoid sendint unnecessary tours?
         }
         // This is a scatter but since order is not guaranteed we need to send the data individually to each process
-        //MPI_Scatter(order_send, MAX_ORDERS_PER_PROCESS, MPI_INT, orders, MAX_ORDERS_PER_PROCESS, MPI_INT, 0, MPI_COMM_WORLD);
-    }
-    // send orders/receive to all processes
-
-#define QUEUE_DISTRIBUTION_ORDERS_SEND 2193884
-#define QUEUE_DISTRIBUTION_ORDERS_RECEIVE 2193884
-    MPI_Recv(orders, MAX_PROCESSES, 0, QUEUE_DISTRIBUTION_ORDERS_SEND, MPI_COMM_WORLD);
-    int destination = 0;
-    static struct SerialTour tours_to_send[MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE];
-    static struct SerialTour tours_to_receive[MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE];
-
-    int order_nr = 0;
-    int tour_nr = 0;
-    while(destination != -1){
-        destination = orders[order_nr];
-        serializeTour(queue_pop(queue), &tours_to_send[tour_nr++]);
-
-        MPI_Send(&tours_to_send[order_nr*QUEUE_PACKETS_SIZE] ,QUEUE_PACKETS_SIZE, MPI_SerialTour , destination, QUEUE_DISTRIBUTE_GIVE,MPI_COMM_WORLD);
-        order_nr++;
-    }
-
-
-
-    //MPI_Recv(orders, MAX_PROCESSES, 0, QUEUE_DISTRIBUTION_ORDERS_RECEIVE, MPI_COMM_WORLD);
-
-
-
-
-    //remotes[id].q_health = sum/i;
-    /*
-    MPI_Sendv(&sum,1,MPI_DOUBLE,0, QUEUE_HEALTH_STATUS,MPI_COMM_WORLD);
-
-    if(id == 0){
-        double total = 0;
-        // get health checks for all the processes
-        for(int i =0; i < nr_processes; i++){
-            MPI_Recv(&remotes[i].q_health,1, MPI_DOUBLE, i, QUEUE_HEALTH_STATUS, MPI_COMM_WORLD);
-            total += queue_health[i];
+        for(int i = 0; i < nr_processes; i++){
+            MPI_Send(&order_send[i], MAX_ORDERS_PER_PROCESS, MPI_INT, i, QUEUE_DISTRIBUTE_GIVE, MPI_COMM_WORLD);
+            MPI_Send(&order_recv[i], MAX_ORDERS_PER_PROCESS, MPI_INT, i, QUEUE_DISTRIBUTE_TAKE, MPI_COMM_WORLD);
         }
-        double average = total/nr_processes;
-        for (int i = 0; i < nr_processes; ++i) {
-            remotes[i].q_health_deviation = queue_health[i] - average;
-        }
-        //
-
     }
-     */
+    MPI_Recv(&order_send[id], MAX_ORDERS_PER_PROCESS, MPI_INT, 0, QUEUE_DISTRIBUTE_GIVE, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Recv(&order_recv[id], MAX_ORDERS_PER_PROCESS, MPI_INT, 0, QUEUE_DISTRIBUTE_TAKE, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
+    // Iterate through all send orders and asynchronously send the queue packets to the other process
+    for(int i = 0; i < MAX_ORDERS_PER_PROCESS; i++){
+        int to = order_send[id][i];
+        // Serialize the queue packets
+        static struct SerialTour tours_to_send[MAX_QUEUE_PACKETS]; // we guarantee this is not being reused since this loadbalancing is called very sporadically
+        for(int j = 0; j < MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE; j++){
+            struct Tour *tour = queue_pop(queue);
+            serializeTour(tour, &tours_to_send[j]);
+            free(tour);
+        }
+        // Send the queue packets to the other process
+        //MPI_Send(&tours_to_send, MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE, MPI_Tour, to, QUEUE_DISTRIBUTION_ORDERS_SEND, MPI_COMM_WORLD);
+        MPI_Isend(&tours_to_send, MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE, MPI_Tour, to, QUEUE_DISTRIBUTION_ORDERS_SEND, MPI_COMM_WORLD, MPI_REQUEST_NULL);
+    }
+
+    // Iterate through each possible receive order
+    for(int i = 0; i < MAX_ORDERS_PER_PROCESS; i++){
+        int from = order_recv[id][i];
+        // Receive the queue packets from the other process
+        static struct SerialTour tours_to_receive[MAX_QUEUE_PACKETS];
+        MPI_Recv(&tours_to_receive, MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE, MPI_Tour, from, QUEUE_DISTRIBUTION_ORDERS_RECEIVE, MPI_COMM_WORLD, MPI_STATUS_IGNORE); // TODO make this async?
+        // Deserialize the queue packets and push them to the queue
+        for(int j = 0; j < MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE; j++){
+            struct Tour *tour = deserializeTour(&tours_to_receive[j]);
+            queue_push(queue, tour);
+        }
+    }
 
 }
 
@@ -595,25 +605,6 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
 }
 
 
-void deserializeTour(struct SerialTour *serialTour, struct Tour *tour){
-    // Another option would be to have the tour store a pointer to an array, instead of building the linked list, since the cities visited are only usefull when presenting the solution
-    // Drawbacks:
-        // more complex free (one more if), (but deserialization is would be more imidiate)
-    tour->cities_visited = serialTour->cities_visited;
-    tour->nr_visited = serialTour->nr_visited;
-    tour->current_city = serialTour->current_city;
-    tour->cost = serialTour->cost;
-    tour->lb = serialTour->lb;
-    struct step_middle *this_step = (struct step_middle *)  tour;
-    int i = serialTour->nr_visited;
-    for(; i < tour->nr_visited; i--){
-        struct step_middle *step = malloc(sizeof(struct step_middle));
-        step->current_city = serialTour->cities[i];
-        this_step->previous_step = step;
-        this_step = step;
-    }
-    free(serialTour->cities);
-}
 
 
 int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
