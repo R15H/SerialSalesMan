@@ -47,6 +47,8 @@ union step {
 
 
 struct AlgorithmState {
+    double sol_cost;
+    double sol_lb;
     double max_lower_bound;
     int number_of_cities;
     int number_of_roads;

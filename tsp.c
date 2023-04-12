@@ -34,7 +34,7 @@ MPI_Datatype MPI_SerialTour;
 int nr_processes = 0;
 // requests for sending the solution
 MPI_Request sol_requests[64] = {0};
-double sol_values[64];
+double sol_values[64] = {999999999999999};
 
 // variables for receiving soluitons
 double solution_cost;
@@ -378,12 +378,15 @@ void scatter_solution(double solution_cost){
     MPI_Status status;
     int flag;
     sol_values[id] = solution_cost;
-    printf("id: %d scattering a solution with cost: %f\n", id, solution_cost/2);
     fflush(stdout);
     current_solution = solution_cost;
-    if(sol_requests[id] != NULL && MPI_Test(&sol_requests[id], &flag, &status) != MPI_ERR_PENDING) {
+    if(sol_requests[id] != NULL){
+        MPI_Test(&sol_requests[id], &flag, &status);
         // can only broadcast if previous broadcast finished
-        if(flag)MPI_Ibcast(&current_solution , 1, MPI_DOUBLE, id, MPI_COMM_WORLD, &sol_requests[id]); // the variable being broadcasted is a pointer, as so it cannot be in the stack!
+        if(flag){
+            MPI_Ibcast(&current_solution , 1, MPI_DOUBLE, id, MPI_COMM_WORLD, &sol_requests[id]); // the variable being broadcasted is a pointer, as so it cannot be in the stack!
+            printf("id: %d scattering a solution with cost: %f\n", id, solution_cost);
+        }
         // TODO either wait for the previous broadcast to finish, or sequechule send... (OMP task?)
     }
 }
@@ -437,7 +440,7 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
         double jump_cost = get_cost_from_city_to_city(tour->current_city, i);
         double new_lb = compute_updated_lower_bound(tour->lb, jump_cost,tour->current_city, i);
 
-        if (new_lb <= algo_state->solution->lb) {
+        if (new_lb <= algo_state->sol_cost) {
             struct Tour *new_tour = go_to_city(tour, i, algo_state, new_lb, tour->cost + jump_cost);
             int finished = get_visited_all_cities(new_tour, algo_state);
             if (!finished) {
@@ -447,11 +450,12 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
                 jump_cost = get_cost_from_city_to_city(i, 0);
                 double final_lb = compute_updated_lower_bound(new_tour->lb,jump_cost ,i, 0);
                 double final_cost = new_tour->cost + jump_cost;
-                int current_tour_is_better = final_cost < algo_state->solution->cost;
+                int current_tour_is_better = final_cost < algo_state->sol_cost;
                 if (current_tour_is_better) {
                     (*tours_created)++;
                     free_tour(algo_state->solution);
                     algo_state->solution = go_to_city(new_tour, 0, algo_state, final_lb,final_cost);
+                    algo_state->sol_cost = final_cost;
                     scatter_solution(final_cost);
                     queue_trim(algo_state->queue, final_cost);
                 } else {
@@ -523,21 +527,33 @@ void gather_best_solution(struct AlgorithmState * algo_state){
     for(int i=0; i < nr_processes; i++){
         MPI_Status status;
         int flag;
-        if(i == id) continue; // do not send to self (we already have the value)
-        MPI_Ibcast(&sol_values[i] , 1, MPI_DOUBLE, i, MPI_COMM_WORLD, &sol_requests[i]);
-        if(MPI_Test(&sol_requests[i], &flag, &status) == MPI_SUCCESS) {
-            if(sol_values[i] < algo_state->solution->cost){
-                algo_state->solution->cost = sol_values[i];
-                process_with_solution = i;
-                //solution_cost = vol_cost[i];
-                printf("Updated solution cost on process %d to %f", id, sol_values[i]);
-            }
+        if(i == id) {
+            printf("algo_state->solution->cost: %f   sol_values[%d] %f\n", algo_state->solution->cost,i, sol_values[id]);
+            if (algo_state->sol_cost < sol_values[id]){
+                sol_values[id] = algo_state->sol_cost;
+            } else continue;
         }
+        //sol_values[id] >= algo_state->solution->cost) continue; // do not send to self (we already have the value)
+        if(sol_requests[i] != NULL)
+        {
+            MPI_Test(&sol_requests[i], &flag, &status);
+            if(flag == 1){
+                printf("Process %d received solution cost from process %d: %f and has %f local cost\n", id, i, sol_values[i], algo_state->solution->cost);
+                if(sol_values[i] < algo_state->solution->cost){
+                    algo_state->solution->cost = sol_values[i];
+                    process_with_solution = i;
+                    //solution_cost = vol_cost[i];
+                    printf("Updated solution cost on process %d to %f\n", id, sol_values[i]);
+                }
+                MPI_Ibcast(&sol_values[i] , 1, MPI_DOUBLE, i, MPI_COMM_WORLD, &sol_requests[i]);
+            }
+        } else  MPI_Ibcast(&sol_values[i] , 1, MPI_DOUBLE, i, MPI_COMM_WORLD, &sol_requests[i]);
     }
 }
 
 
 void tscp(struct AlgorithmState *algo_state) {
+    algo_state->sol_cost = algo_state->max_lower_bound*2;;
     algo_state->solution = (struct Tour *) get_clean_step();
     algo_state->solution->cost = algo_state->max_lower_bound*2;
     algo_state->solution->cities_visited = algo_state->all_cities_visited_mask;
@@ -728,7 +744,6 @@ int main(int argc, char *argv[]) {
 
 
 
-
     MPI_Barrier(MPI_COMM_WORLD);
 
     printf("Process %d ready, %d processes in total\n", id, p);
@@ -739,15 +754,15 @@ int main(int argc, char *argv[]) {
     tscp(&algo_state);
     // gather algo_state solution from all processes
     serializeTour(algo_state.solution, &send_solutions[id]);
-    printf("GATHER ALL SOLUTIONS Sending solution from process %d, cost: %.2f, lb: %.2f\n", id, send_solutions[id].cost/2, send_solutions[id].lb);
-    MPI_Gather( &send_solutions[id], 1, MPI_SerialTour, receive_solutions, 1, MPI_SerialTour, 0, MPI_COMM_WORLD);
+    printf("GATHER ALL SOLUTIONS Sending solution from process %d, cost: %.2f, lb: %.2f\n", id, send_solutions[id].cost, send_solutions[id].lb);
+    MPI_Gather( &send_solutions[0], 1, MPI_SerialTour, receive_solutions, 1, MPI_SerialTour, 0, MPI_COMM_WORLD);
     int best_solution_id = 0;
     printf("ALL GOOD\n");
     fflush(stdout);
     if(id == 0){
     for(int i =0; i < nr_processes; i++){
         struct SerialTour* serial_tour = &receive_solutions[i];
-        printf("GATHER ALL SOLUTIONS Received on root: process: %d, cost: %.2f, lb: %.2f.\n", i, serial_tour->cost/2, serial_tour->lb);
+        printf("GATHER ALL SOLUTIONS Received on root: process: %d, cost: %.2f, lb: %.2f.\n", i, serial_tour->cost, serial_tour->lb);
         serial_tour->cost < receive_solutions[best_solution_id].cost ? best_solution_id = i : 0;
     }
     }
