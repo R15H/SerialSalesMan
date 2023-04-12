@@ -45,6 +45,10 @@ union step {
     struct Tour Tour;        // we know a step head is head because it is retrieved from the queue
 };
 
+struct solution_data{
+    double sol_cost;
+    double sol_lb;
+};
 
 struct AlgorithmState {
     double sol_cost;

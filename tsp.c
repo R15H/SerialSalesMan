@@ -373,18 +373,20 @@ struct Tour *go_to_city(struct Tour *tour, short city_id, struct AlgorithmState 
            //step_worst_than_found_solution;
 //}
 
-double current_solution;
-void scatter_solution(double solution_cost){
+struct solution_data current_solution;
+#define SOLUTION_FOUND_TO_MASTER 1
+void scatter_solution(double solution_cost, double sol_lb){
     MPI_Status status;
     int flag;
     sol_values[id] = solution_cost;
     fflush(stdout);
-    current_solution = solution_cost;
+    current_solution.sol_cost = solution_cost;
+    current_solution.sol_lb = sol_lb;
     if(sol_requests[id] != NULL){
         MPI_Test(&sol_requests[id], &flag, &status);
         // can only broadcast if previous broadcast finished
         if(flag){
-            MPI_Ibcast(&current_solution , 1, MPI_DOUBLE, id, MPI_COMM_WORLD, &sol_requests[id]); // the variable being broadcasted is a pointer, as so it cannot be in the stack!
+            MPI_Send(&current_solution , 2, MPI_DOUBLE, 0, SOLUTION_FOUND_TO_MASTER ,MPI_COMM_WORLD);//, &sol_requests[id]); // the variable being broadcasted is a pointer, as so it cannot be in the stack!
             printf("id: %d scattering a solution with cost: %f\n", id, solution_cost);
         }
         // TODO either wait for the previous broadcast to finish, or sequechule send... (OMP task?)
@@ -456,7 +458,7 @@ void visit_city(struct Tour *tour,int destination, struct AlgorithmState *algo_s
                     free_tour(algo_state->solution);
                     algo_state->solution = go_to_city(new_tour, 0, algo_state, final_lb,final_cost);
                     algo_state->sol_cost = final_cost;
-                    scatter_solution(final_cost);
+                    scatter_solution(final_cost, final_lb);
                     queue_trim(algo_state->queue, final_cost);
                 } else {
                     free(new_tour); // not free_tour because we only want to delete this piece, and do not wnat to look to prev step
@@ -519,11 +521,54 @@ int  analyseTour(struct Tour *tour, struct AlgorithmState *algo_state) {
     return tours_created;
 }
 
-double vol_cost[64];
+double vol_cost[128];
 int process_with_solution;
+struct solution_data solutionData;
+
+
 void gather_best_solution(struct AlgorithmState * algo_state){
     // check if any of the processes has a better solution, iterate over all processes
     // we use this if to periodically check, a new if would consume more resources...
+    static MPI_Request solution_broadcast = NULL;
+    if(id == 0){
+
+        // receive solution from all processes using MPI_Irecv
+        // if a process has a better solution, update the solution
+        for (int i = 0; i < nr_processes; ++i) {
+            if(i == id) continue; // do not send to self (we already have the value)
+            MPI_Status status;
+            MPI_IRecv(&vol_cost[i*2], 2, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &status,);
+            if (algo_state->sol_cost > vol_cost[i*2]){
+                solutionData.sol_cost = vol_cost[i*2];
+                solutionData.sol_lb = vol_cost[i*2+1];
+                process_with_solution = i;
+                printf("MASTER new global solution: %f", algo_state->sol_cost);
+            }
+
+        }
+
+        if(solutionData.sol_cost < algo_state->sol_cost) {
+            algo_state->sol_cost = solutionData.sol_cost;
+            algo_state->sol_lb = solutionData.sol_lb;
+            MPI_Status status;
+            if(solution_broadcast) MPI_Wait(&solution_broadcast, &status);
+            MPI_Ibcast(&solutionData , 2,MPI_DOUBLE, 0, MPI_COMM_WORLD, &solution_broadcast);
+        } // else do not broadcast, no solution has been found
+    }
+    else {
+        MPI_Status status;
+        if(solution_broadcast) MPI_Wait(&solution_broadcast, &status);
+        MPI_Ibcast(&solutionData , 2,MPI_DOUBLE, 0, MPI_COMM_WORLD, &solution_broadcast);
+        if(algo_state->sol_cost > solutionData.sol_cost){
+            algo_state->sol_cost = solutionData.sol_cost;
+            algo_state->sol_lb = solutionData.sol_lb;
+        }
+    }
+
+
+
+
+    /*
     for(int i=0; i < nr_processes; i++){
         MPI_Status status;
         int flag;
@@ -549,6 +594,7 @@ void gather_best_solution(struct AlgorithmState * algo_state){
             }
         } else  MPI_Ibcast(&sol_values[i] , 1, MPI_DOUBLE, i, MPI_COMM_WORLD, &sol_requests[i]);
     }
+     */
 }
 
 
