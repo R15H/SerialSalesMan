@@ -525,7 +525,7 @@ double vol_cost[128];
 int process_with_solution;
 struct solution_data solutionData;
 
-
+MPI_Request gather_solution[64] = {NULL};
 void gather_best_solution(struct AlgorithmState * algo_state){
     // check if any of the processes has a better solution, iterate over all processes
     // we use this if to periodically check, a new if would consume more resources...
@@ -537,7 +537,8 @@ void gather_best_solution(struct AlgorithmState * algo_state){
         for (int i = 0; i < nr_processes; ++i) {
             if(i == id) continue; // do not send to self (we already have the value)
             MPI_Status status;
-            MPI_IRecv(&vol_cost[i*2], 2, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &status,);
+            if(gather_solution[i] != NULL) MPI_Wait(&gather_solution[i], status);
+            MPI_Irecv(&vol_cost[i*2], 2, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &status,&gather_solution[64]);
             if (algo_state->sol_cost > vol_cost[i*2]){
                 solutionData.sol_cost = vol_cost[i*2];
                 solutionData.sol_lb = vol_cost[i*2+1];
