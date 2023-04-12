@@ -445,8 +445,10 @@ void distribute_load(){
 }
 
 
+double *packets_sums = NULL;
 void load_balance(priority_queue_t *queue){ // reports the queue healthy and executes orders from the master if there are any
     // iterate through the first 100 items of the queue and average their LB
+
     double sum[MAX_QUEUE_PACKETS+1] = {-1};
     int i=-1;
     int j = 10;
@@ -462,7 +464,7 @@ void load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
         }
         if(finished) break;
     }
-    MPI_Gather( &sum, MAX_QUEUE_PACKETS, MPI_DOUBLE, NULL, 1, MPI_SerialTour, 0, MPI_COMM_WORLD);
+    MPI_Gather( &sum, j+1, MPI_DOUBLE, packets_sums, MAX_QUEUE_PACKETS, MPI_DOUBLE, 0, MPI_COMM_WORLD); // TODO check optimization diferent values for counts
     MPI_Send(&sum, j+1, MPI_DOUBLE, 0, QUEUE_HEALTH_STATUS, MPI_COMM_WORLD);
 
 #define QUEUE_DISTRIBUTION_ORDERS_SEND 2193884
@@ -843,6 +845,12 @@ int main(int argc, char *argv[]) {
     MPI_Comm_size(MPI_COMM_WORLD, &nr_processes);
     MPI_Comm_rank (MPI_COMM_WORLD, &id);
     MPI_Comm_size (MPI_COMM_WORLD, &p);
+
+    if(id == 0){
+        packets_sums = malloc(sizeof (double)* QUEUE_PACKETS_SIZE* MAX_QUEUE_PACKETS*nr_processes);
+    }
+
+
     printf("Nr of proccesses %d\n", nr_processes);
 
     send_solutions = malloc((sizeof(struct SerialTour) +
