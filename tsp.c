@@ -436,11 +436,23 @@ int orders[MAX_PROCESSES];
 
 #define QUEUE_DISTRIBUTE_GIVE 123048921
 struct remote_proc remotes[64];
+
+
+void distribute_load(){
+    if(id == 0){
+
+    }
+}
+
+
 void load_balance(priority_queue_t *queue){ // reports the queue healthy and executes orders from the master if there are any
     // iterate through the first 100 items of the queue and average their LB
     double sum[MAX_QUEUE_PACKETS+1] = {-1};
     int i=-1;
     int j = 10;
+    for(int l =0; l < MAX_QUEUE_PACKETS+1; l++){
+        printf("%f",sum[l]);
+    }
 
     bool finished = false;
     while(j < MAX_QUEUE_PACKETS) {
@@ -450,7 +462,9 @@ void load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
         }
         if(finished) break;
     }
+    MPI_Gather( &sum, MAX_QUEUE_PACKETS, MPI_DOUBLE, NULL, 1, MPI_SerialTour, 0, MPI_COMM_WORLD);
     MPI_Send(&sum, j+1, MPI_DOUBLE, 0, QUEUE_HEALTH_STATUS, MPI_COMM_WORLD);
+
 #define QUEUE_DISTRIBUTION_ORDERS_SEND 2193884
 #define QUEUE_DISTRIBUTION_ORDERS_RECEIVE 2193884
     MPI_Recv(orders, MAX_PROCESSES, 0, QUEUE_DISTRIBUTION_ORDERS_SEND, MPI_COMM_WORLD);
@@ -467,6 +481,10 @@ void load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
         MPI_Send(&tours_to_send[order_nr*QUEUE_PACKETS_SIZE] ,QUEUE_PACKETS_SIZE, MPI_SerialTour , destination, QUEUE_DISTRIBUTE_GIVE,MPI_COMM_WORLD);
         order_nr++;
     }
+
+
+
+    //MPI_Recv(orders, MAX_PROCESSES, 0, QUEUE_DISTRIBUTION_ORDERS_RECEIVE, MPI_COMM_WORLD);
 
 
 
