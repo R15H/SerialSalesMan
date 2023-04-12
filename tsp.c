@@ -497,16 +497,21 @@ void load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
     // Get all queue packets from all processes
     MPI_Gather( &sum, MAX_QUEUE_PACKETS , MPI_Health_Packet, packets_sums, MAX_QUEUE_PACKETS, MPI_Health_Packet, 0, MPI_COMM_WORLD); // TODO check optimization diferent values for counts
 
-    // Match queue packets with each other
-    qsort(packets_sums, MAX_QUEUE_PACKETS * nr_processes, sizeof(struct queue_health_packet), (int (*)(const void *, const void *)) compare);
-
-    int start = 0;
-    int end = 0;
-    for(  ;start >= end; start++,end--) {
-        int from  = packets_sums[start].from;
-        order_send[from][order_send_num[from]++] = packets_sums[end].from;
-        order_recv[packets_sums[end].from][order_recv_num[packets_sums[end].from]++] = packets_sums[start].from;
+    if(id == 0) {
+        // Match queue packets with each other
+        qsort(packets_sums, MAX_QUEUE_PACKETS * nr_processes, sizeof(struct queue_health_packet),
+              (int (*)(const void *, const void *)) compare);
+        int start = 0;
+        int end = 0;
+        for (; start >= end; start++, end--) {
+            int from = packets_sums[start].from;
+            order_send[from][order_send_num[from]++] = packets_sums[end].from;
+            order_recv[packets_sums[end].from][order_recv_num[packets_sums[end].from]++] = packets_sums[start].from;
+        }
+        // This is a scatter but since order is not guaranteed we need to send the data individually to each process
+        //MPI_Scatter(order_send, MAX_ORDERS_PER_PROCESS, MPI_INT, orders, MAX_ORDERS_PER_PROCESS, MPI_INT, 0, MPI_COMM_WORLD);
     }
+    // send orders/receive to all processes
 
 #define QUEUE_DISTRIBUTION_ORDERS_SEND 2193884
 #define QUEUE_DISTRIBUTION_ORDERS_RECEIVE 2193884
