@@ -446,26 +446,56 @@ void distribute_load(){
 
 
 double *packets_sums = NULL;
+struct Orders{
+    int to_receive[nr_processes],
+    int to_send[nr_processess]
+};
+
+int compare(const double *a, const double *b){
+    return *a > *b;
+}
+
+struct order {
+    int from;
+    int to;
+};
+
 void load_balance(priority_queue_t *queue){ // reports the queue healthy and executes orders from the master if there are any
+    //static Orders orders[nr_processes];
+    int orders[nr_processes][MAX_QUEUE_PACKETS*2];
+    int order_nr[nr_processes] = {0};
     // iterate through the first 100 items of the queue and average their LB
 
-    double sum[MAX_QUEUE_PACKETS+1] = {-1};
+    double sum[MAX_QUEUE_PACKETS*2+1] = {-1};
     int i=-1;
     int j = 10;
+
     for(int l =0; l < MAX_QUEUE_PACKETS+1; l++){
         printf("%f",sum[l]);
     }
+    // do all sends async
+    // do receives syncronously
 
     bool finished = false;
     while(j < MAX_QUEUE_PACKETS) {
-        j++;
+        j +=2;
+        sum[j] = id;
         for(; i < QUEUE_PACKETS_SIZE && queue->size > i ; i++ ){
             sum[j] += (queue->buffer[i])->lb;
         }
         if(finished) break;
     }
-    MPI_Gather( &sum, j+1, MPI_DOUBLE, packets_sums, MAX_QUEUE_PACKETS, MPI_DOUBLE, 0, MPI_COMM_WORLD); // TODO check optimization diferent values for counts
-    MPI_Send(&sum, j+1, MPI_DOUBLE, 0, QUEUE_HEALTH_STATUS, MPI_COMM_WORLD);
+    MPI_Gather( &sum, MAX_QUEUE_PACKETS , MPI_DOUBLE, packets_sums, MAX_QUEUE_PACKETS, MPI_DOUBLE, 0, MPI_COMM_WORLD); // TODO check optimization diferent values for counts
+
+    qsort(packets_sums, MAX_QUEUE_PACKETS * nr_processes, 2*sizeof(double), (int (*)(const void *, const void *)) compare);
+    int start = 0;
+    int end = 0;
+    for(  ;start >= end; start++,end--) {
+        orders[ packets_sums[start+1]]    [order_nr++]
+
+        new_order(, packets_sums[end-1]);
+
+    }
 
 #define QUEUE_DISTRIBUTION_ORDERS_SEND 2193884
 #define QUEUE_DISTRIBUTION_ORDERS_RECEIVE 2193884
