@@ -514,12 +514,11 @@ int order_recv[MAX_PROCESSES][MAX_ORDERS_PER_PROCESS] =    {0,0};
 int order_recv_num[MAX_PROCESSES]  = {0,0};
 int order_send[MAX_PROCESSES][MAX_ORDERS_PER_PROCESS] = {0,0};
 int order_send_num[MAX_PROCESSES] = {0,0};
-struct queue_health_packet sum[MAX_QUEUE_PACKETS];
 void load_balance(priority_queue_t *queue){ // reports the queue healthy and executes orders from the master if there are any
     // iterate through the first 100 items of the queue and average their LB
 
 
-
+    struct queue_health_packet sum[MAX_QUEUE_PACKETS];
     // Access the health of each queue packet
     int j = 0;
     int i = 0;
@@ -533,8 +532,8 @@ void load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
             sum[j].sum += (queue->buffer[i])->lb;
             this_it++;
         }
-        //if(this_it < QUEUE_PACKETS_SIZE) // did not finish
-            //sum[j].sum = 0;
+        if(this_it < QUEUE_PACKETS_SIZE) // did not finish
+            sum[j].sum = 0;
         j++;
         printf("[%d] %d Sum: %f\n", id,j, sum[j].sum);
     }
@@ -542,7 +541,7 @@ void load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
 
     // Get all queue packets from all processes
     //MPI_Health_Packet
-    MPI_Gather( &sum, (MAX_QUEUE_PACKETS +5)*(sizeof(int) +sizeof (double)), MPI_BYTE, packets_sums,  (MAX_QUEUE_PACKETS+5) *(sizeof(int) +sizeof (double)), MPI_BYTE, 0, MPI_COMM_WORLD); // TODO check optimization diferent values for counts
+    MPI_Gather( &sum, (MAX_QUEUE_PACKETS)*sizeof(struct queue_health_packet), MPI_BYTE, packets_sums,  (MAX_QUEUE_PACKETS) *(sizeof(struct queue_health_packet)), MPI_BYTE, 0, MPI_COMM_WORLD); // TODO check optimization diferent values for counts
     // print the contents of packets_sums
 
     if(id == 0) {
