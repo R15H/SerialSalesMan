@@ -1,0 +1,170 @@
+==29452== Memcheck, a memory error detector
+==29452== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
+==29452== Using Valgrind-3.18.1 and LibVEX; rerun with -h for copyright info
+==29452== Command: ./tsp ./data/gen10-20.in 20
+==29452== Parent PID: 14742
+==29452== 
+==29452== Invalid read of size 8
+==29452==    at 0x10B12A: analyseTourParallel (tsp.c:484)
+==29452==    by 0x10B3B4: tscp (tsp.c:528)
+==29452==    by 0x10940C: main (tsp.c:647)
+==29452==  Address 0x8d12c88 is 24 bytes inside a block of size 48 free'd
+==29452==    at 0x484B27F: free (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==29452==    by 0x10A473: visit_city_parallel (tsp.c:420)
+==29452==    by 0x10A473: analyseTourParallel._omp_fn.0 (tsp.c:475)
+==29452==    by 0x4969B9D: ??? (in /usr/lib/x86_64-linux-gnu/libgomp.so.1.0.0)
+==29452==    by 0x4A2AB42: start_thread (pthread_create.c:442)
+==29452==    by 0x4ABBBB3: clone (clone.S:100)
+==29452==  Block was alloc'd at
+==29452==    at 0x4848899: malloc (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==29452==    by 0x10A47D: get_clean_step (tsp.c:230)
+==29452==    by 0x10A47D: go_to_city (tsp.c:333)
+==29452==    by 0x10A47D: visit_city_parallel (tsp.c:421)
+==29452==    by 0x10A47D: analyseTourParallel._omp_fn.0 (tsp.c:475)
+==29452==    by 0x4969B9D: ??? (in /usr/lib/x86_64-linux-gnu/libgomp.so.1.0.0)
+==29452==    by 0x4A2AB42: start_thread (pthread_create.c:442)
+==29452==    by 0x4ABBBB3: clone (clone.S:100)
+==29452== 
+==29452== 
+==29452== HEAP SUMMARY:
+==29452==     in use at exit: 109,009,496 bytes in 40,819 blocks
+==29452==   total heap usage: 41,839 allocs, 1,020 frees, 109,105,008 bytes allocated
+==29452== 
+==29452== 32 bytes in 1 blocks are definitely lost in loss record 2 of 31
+==29452==    at 0x4848899: malloc (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==29452==    by 0x1093DB: queue_create (tsp.c:91)
+==29452==    by 0x1093DB: main (tsp.c:646)
+==29452== 
+==29452== 48 bytes in 1 blocks are possibly lost in loss record 5 of 31
+==29452==    at 0x4848899: malloc (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==29452==    by 0x10A353: get_clean_step (tsp.c:230)
+==29452==    by 0x10A353: go_to_city (tsp.c:333)
+==29452==    by 0x10A353: visit_city_parallel (tsp.c:400)
+==29452==    by 0x10A353: analyseTourParallel._omp_fn.0 (tsp.c:475)
+==29452==    by 0x4969B9D: ??? (in /usr/lib/x86_64-linux-gnu/libgomp.so.1.0.0)
+==29452==    by 0x4A2AB42: start_thread (pthread_create.c:442)
+==29452==    by 0x4ABBBB3: clone (clone.S:100)
+==29452== 
+==29452== 48 bytes in 1 blocks are definitely lost in loss record 6 of 31
+==29452==    at 0x4848899: malloc (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==29452==    by 0x10B2A0: get_clean_step (tsp.c:230)
+==29452==    by 0x10B2A0: tscp (tsp.c:503)
+==29452==    by 0x10940C: main (tsp.c:647)
+==29452== 
+==29452== 48 bytes in 1 blocks are definitely lost in loss record 7 of 31
+==29452==    at 0x4848899: malloc (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==29452==    by 0x10B2ED: get_clean_step (tsp.c:230)
+==29452==    by 0x10B2ED: tscp (tsp.c:510)
+==29452==    by 0x10940C: main (tsp.c:647)
+==29452== 
+==29452== 48 bytes in 1 blocks are definitely lost in loss record 8 of 31
+==29452==    at 0x4848899: malloc (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==29452==    by 0x10B322: get_clean_step (tsp.c:230)
+==29452==    by 0x10B322: tscp (tsp.c:517)
+==29452==    by 0x10940C: main (tsp.c:647)
+==29452== 
+==29452== 80 bytes in 1 blocks are definitely lost in loss record 10 of 31
+==29452==    at 0x484DA83: calloc (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==29452==    by 0x10B4CD: place_cost_in_city (tsp.c:556)
+==29452==    by 0x10B7BF: parse_inputs (tsp.c:619)
+==29452==    by 0x1093C6: main (tsp.c:644)
+==29452== 
+==29452== 96 bytes in 2 blocks are possibly lost in loss record 12 of 31
+==29452==    at 0x4848899: malloc (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==29452==    by 0x10A1B1: get_clean_step (tsp.c:230)
+==29452==    by 0x10A1B1: analyseTourParallel._omp_fn.0 (tsp.c:465)
+==29452==    by 0x4960A15: GOMP_parallel (in /usr/lib/x86_64-linux-gnu/libgomp.so.1.0.0)
+==29452==    by 0x10B0CC: analyseTourParallel (tsp.c:460)
+==29452==    by 0x10B3B4: tscp (tsp.c:528)
+==29452==    by 0x10940C: main (tsp.c:647)
+==29452== 
+==29452== 144 bytes in 3 blocks are possibly lost in loss record 13 of 31
+==29452==    at 0x4848899: malloc (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==29452==    by 0x10A1B1: get_clean_step (tsp.c:230)
+==29452==    by 0x10A1B1: analyseTourParallel._omp_fn.0 (tsp.c:465)
+==29452==    by 0x4969B9D: ??? (in /usr/lib/x86_64-linux-gnu/libgomp.so.1.0.0)
+==29452==    by 0x4A2AB42: start_thread (pthread_create.c:442)
+==29452==    by 0x4ABBBB3: clone (clone.S:100)
+==29452== 
+==29452== 720 bytes in 9 blocks are definitely lost in loss record 18 of 31
+==29452==    at 0x484DA83: calloc (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==29452==    by 0x10B4CD: place_cost_in_city (tsp.c:556)
+==29452==    by 0x10B7D8: parse_inputs (tsp.c:620)
+==29452==    by 0x1093C6: main (tsp.c:644)
+==29452== 
+==29452== 1,440 bytes in 5 blocks are possibly lost in loss record 19 of 31
+==29452==    at 0x484DA83: calloc (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==29452==    by 0x40147D9: calloc (rtld-malloc.h:44)
+==29452==    by 0x40147D9: allocate_dtv (dl-tls.c:375)
+==29452==    by 0x40147D9: _dl_allocate_tls (dl-tls.c:634)
+==29452==    by 0x4A2B834: allocate_stack (allocatestack.c:430)
+==29452==    by 0x4A2B834: pthread_create@@GLIBC_2.34 (pthread_create.c:647)
+==29452==    by 0x496A1EF: ??? (in /usr/lib/x86_64-linux-gnu/libgomp.so.1.0.0)
+==29452==    by 0x4960A10: GOMP_parallel (in /usr/lib/x86_64-linux-gnu/libgomp.so.1.0.0)
+==29452==    by 0x10B0CC: analyseTourParallel (tsp.c:460)
+==29452==    by 0x10B3B4: tscp (tsp.c:528)
+==29452==    by 0x10940C: main (tsp.c:647)
+==29452== 
+==29452== 2,256 (2,112 direct, 144 indirect) bytes in 44 blocks are definitely lost in loss record 20 of 31
+==29452==    at 0x4848899: malloc (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==29452==    by 0x10A353: get_clean_step (tsp.c:230)
+==29452==    by 0x10A353: go_to_city (tsp.c:333)
+==29452==    by 0x10A353: visit_city_parallel (tsp.c:400)
+==29452==    by 0x10A353: analyseTourParallel._omp_fn.0 (tsp.c:475)
+==29452==    by 0x4960A15: GOMP_parallel (in /usr/lib/x86_64-linux-gnu/libgomp.so.1.0.0)
+==29452==    by 0x10B0CC: analyseTourParallel (tsp.c:460)
+==29452==    by 0x10B3B4: tscp (tsp.c:528)
+==29452==    by 0x10940C: main (tsp.c:647)
+==29452== 
+==29452== 4,272 (3,600 direct, 672 indirect) bytes in 75 blocks are definitely lost in loss record 22 of 31
+==29452==    at 0x4848899: malloc (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==29452==    by 0x10A353: get_clean_step (tsp.c:230)
+==29452==    by 0x10A353: go_to_city (tsp.c:333)
+==29452==    by 0x10A353: visit_city_parallel (tsp.c:400)
+==29452==    by 0x10A353: analyseTourParallel._omp_fn.0 (tsp.c:475)
+==29452==    by 0x4969B9D: ??? (in /usr/lib/x86_64-linux-gnu/libgomp.so.1.0.0)
+==29452==    by 0x4A2AB42: start_thread (pthread_create.c:442)
+==29452==    by 0x4ABBBB3: clone (clone.S:100)
+==29452== 
+==29452== 40,960 bytes in 5 blocks are possibly lost in loss record 26 of 31
+==29452==    at 0x4848899: malloc (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==29452==    by 0x10B075: queue_create (tsp.c:93)
+==29452==    by 0x10B075: analyseTourParallel (tsp.c:458)
+==29452==    by 0x10B3B4: tscp (tsp.c:528)
+==29452==    by 0x10940C: main (tsp.c:647)
+==29452== 
+==29452== 92,544 (82,896 direct, 9,648 indirect) bytes in 1,727 blocks are definitely lost in loss record 28 of 31
+==29452==    at 0x4848899: malloc (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==29452==    by 0x10A1B1: get_clean_step (tsp.c:230)
+==29452==    by 0x10A1B1: analyseTourParallel._omp_fn.0 (tsp.c:465)
+==29452==    by 0x4960A15: GOMP_parallel (in /usr/lib/x86_64-linux-gnu/libgomp.so.1.0.0)
+==29452==    by 0x10B0CC: analyseTourParallel (tsp.c:460)
+==29452==    by 0x10B3B4: tscp (tsp.c:528)
+==29452==    by 0x10940C: main (tsp.c:647)
+==29452== 
+==29452== 483,120 (451,200 direct, 31,920 indirect) bytes in 9,400 blocks are definitely lost in loss record 29 of 31
+==29452==    at 0x4848899: malloc (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==29452==    by 0x10A1B1: get_clean_step (tsp.c:230)
+==29452==    by 0x10A1B1: analyseTourParallel._omp_fn.0 (tsp.c:465)
+==29452==    by 0x4969B9D: ??? (in /usr/lib/x86_64-linux-gnu/libgomp.so.1.0.0)
+==29452==    by 0x4A2AB42: start_thread (pthread_create.c:442)
+==29452==    by 0x4ABBBB3: clone (clone.S:100)
+==29452== 
+==29452== 108,379,712 (421,440 direct, 107,958,272 indirect) bytes in 13,170 blocks are definitely lost in loss record 31 of 31
+==29452==    at 0x4848899: malloc (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==29452==    by 0x10B068: queue_create (tsp.c:91)
+==29452==    by 0x10B068: analyseTourParallel (tsp.c:458)
+==29452==    by 0x10B3B4: tscp (tsp.c:528)
+==29452==    by 0x10940C: main (tsp.c:647)
+==29452== 
+==29452== LEAK SUMMARY:
+==29452==    definitely lost: 962,224 bytes in 24,430 blocks
+==29452==    indirectly lost: 108,000,656 bytes in 16,352 blocks
+==29452==      possibly lost: 42,688 bytes in 16 blocks
+==29452==    still reachable: 3,928 bytes in 21 blocks
+==29452==         suppressed: 0 bytes in 0 blocks
+==29452== Reachable blocks (those to which a pointer was found) are not shown.
+==29452== To see them, rerun with: --leak-check=full --show-leak-kinds=all
+==29452== 
+==29452== For lists of detected and suppressed errors, rerun with: -s
+==29452== ERROR SUMMARY: 17 errors from 17 contexts (suppressed: 0 from 0)

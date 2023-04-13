@@ -206,7 +206,7 @@ void pq(FILE *file, struct Tour *node)
 void queue_trim(priority_queue_t *queue, double maxCost)
 {
     // printf("Solution found... %d", rand());
-    if (queue->size < 1000000)
+    if (queue->size < 500)
     {
         return;
     }
@@ -401,10 +401,8 @@ void visit_city_parallel(struct Tour *th_tour, int destination, struct Algorithm
             int finished = get_visited_all_cities(new_tour, algo_state);
             if (!finished)
             {
-#pragma omp critical
-                {
-                    (*tours_created)++;
-                }
+#pragma omp atomic
+                (*tours_created)++;
                 queue_push(th_queue, new_tour);
             }
             else
@@ -419,6 +417,7 @@ void visit_city_parallel(struct Tour *th_tour, int destination, struct Algorithm
                     // printf("Tour created:%d \n", *tours_created);
                     free_tour(list_solutions[id][0].solution);
                     list_solutions[id][0].solution = go_to_city(new_tour, 0, final_lb, final_cost);
+                    queue_trim(th_queue, final_cost);
                     // print_tour(local_solution);
                 }
                 else
@@ -475,24 +474,30 @@ int analyseTourParallel(struct Tour *tour, struct AlgorithmState *algo_state)
             visit_city_parallel(th_tour, i, algo_state, th_queue[id][0], &tours_created);
         }
 #pragma omp barrier
-    }
-    for (int n = 0; n < MAX_THREADS; n++)
-        while ((pop_tour = queue_pop(th_queue[n][0])))
-            queue_push(algo_state->queue, pop_tour);
-    int temp = tours_created + 1;
-    for (int n = 0; n < MAX_THREADS; n++)
-        if (list_solutions[n][0].solution->cost < list_solutions[MAX_THREADS][0].solution->cost)
+#pragma omp single
         {
-            tours_created = temp;
-            /*
-            printf("1:%d\n", local_solution[n][0].current_city);
-            printf("2:%f\n", local_solution[n][0].lb);
-            printf("3:%f\n", local_solution[n][0].cost);
-            printf("4:%f\n", get_cost_from_city_to_city(tour->current_city, local_solution[n][0].current_city));
-            */
-            list_solutions[MAX_THREADS][0].solution = list_solutions[n][0].solution;
-            algo_state->solution = list_solutions[MAX_THREADS][0].solution;
+            for (int n = 0; n < MAX_THREADS; n++)
+                while ((pop_tour = queue_pop(th_queue[n][0])))
+                    queue_push(algo_state->queue, pop_tour);
+            int temp = tours_created + 1;
+            for (int n = 0; n < MAX_THREADS; n++)
+                if (list_solutions[n][0].solution->cost < list_solutions[MAX_THREADS][0].solution->cost)
+                {
+                    tours_created = temp;
+                    /*
+                    printf("1:%d\n", local_solution[n][0].current_city);
+                    printf("2:%f\n", local_solution[n][0].lb);
+                    printf("3:%f\n", local_solution[n][0].cost);
+                    printf("4:%f\n", get_cost_from_city_to_city(tour->current_city, local_solution[n][0].current_city));
+                    */
+                    free_tour(list_solutions[MAX_THREADS][0].solution);
+                    list_solutions[MAX_THREADS][0].solution = list_solutions[n][0].solution;
+                    free_tour(algo_state->solution);
+                    algo_state->solution = list_solutions[MAX_THREADS][0].solution;
+                }
+            queue_trim(algo_state->queue, algo_state->solution->cost);
         }
+    }
     return tours_created;
 }
 
