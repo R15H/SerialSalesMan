@@ -427,7 +427,7 @@ double health_deviation[64];
 #define QUEUE_HEALTH_STATUS 10
 
 #define MAX_QUEUE_PACKETS 10
-#define QUEUE_PACKETS_SIZE 50
+#define QUEUE_PACKETS_SIZE 1
 struct remote_proc {
     double q_health[MAX_QUEUE_PACKETS][QUEUE_PACKETS_SIZE];
     double q_health_deviation[QUEUE_PACKETS_SIZE];
@@ -453,7 +453,7 @@ void distribute_load(){
 
 
 int compare(const double *a, const double *b){
-    return *a > *b;
+    return *a < *b;
 }
 
 
@@ -495,10 +495,13 @@ struct queue_health_packet {
 };
 
 struct SerialTour * initialize_serial_tours(struct SerialTour** tours, int nr_of_tours){
+    printf("Initializing serial tours vector\n");
     for(int t=0; t < nr_of_tours;t++ ){
         tours[t] = malloc((sizeof(struct SerialTour) +
                 ((nr_of_cities-1) * sizeof(unsigned short) )
-               ) * nr_processes);
+               )
+                       );
+        printf("%p\n", tours[t]);
     }
 
 }
@@ -511,33 +514,43 @@ int order_recv[MAX_PROCESSES][MAX_ORDERS_PER_PROCESS] =    {0,0};
 int order_recv_num[MAX_PROCESSES]  = {0,0};
 int order_send[MAX_PROCESSES][MAX_ORDERS_PER_PROCESS] = {0,0};
 int order_send_num[MAX_PROCESSES] = {0,0};
+struct queue_health_packet sum[MAX_QUEUE_PACKETS];
 void load_balance(priority_queue_t *queue){ // reports the queue healthy and executes orders from the master if there are any
+    return;
     // iterate through the first 100 items of the queue and average their LB
 
 
-    struct queue_health_packet sum[MAX_QUEUE_PACKETS+1];
 
     // Access the health of each queue packet
     int j = 0;
     int i = 0;
+    printf("Here %d %d %ld %d\n", MAX_QUEUE_PACKETS,j, queue->size, id);
     while(j < MAX_QUEUE_PACKETS) {
         sum[j].from = id;
         sum[j].sum = 0;
         for(; i < QUEUE_PACKETS_SIZE && queue->size > i ; i++ ){
+            printf("LB %f  i: %d j: %d\n",(queue->buffer[i])->lb,i,j);
             sum[j].sum += (queue->buffer[i])->lb;
         }
         j++;
+        printf("[%d] %d Sum: %f\n", id,j, sum[j].sum);
     }
 
+
     // Get all queue packets from all processes
-    MPI_Gather( &sum, MAX_QUEUE_PACKETS , MPI_Health_Packet, packets_sums, MAX_QUEUE_PACKETS, MPI_Health_Packet, 0, MPI_COMM_WORLD); // TODO check optimization diferent values for counts
+    //MPI_Health_Packet
+    MPI_Gather( &sum, (MAX_QUEUE_PACKETS +5)*(sizeof(int) +sizeof (double)), MPI_BYTE, packets_sums,  (MAX_QUEUE_PACKETS+5) *(sizeof(int) +sizeof (double)), MPI_BYTE, 0, MPI_COMM_WORLD); // TODO check optimization diferent values for counts
+    // print the contents of packets_sums
+    for(int k = 0; k < nr_processes * MAX_QUEUE_PACKETS; k++){
+        printf("%d from: %d sum: %f\n",k, packets_sums[k].from, packets_sums[k].sum);
+    }
 
     if(id == 0) {
         // Match queue packets with each other
         qsort(packets_sums, MAX_QUEUE_PACKETS * nr_processes, sizeof(struct queue_health_packet),
               (int (*)(const void *, const void *)) compare);
         int start = 0;
-        int end = 0;
+        int end = MAX_QUEUE_PACKETS*nr_processes-1;
         for (; start >= end; start++, end--) {
             int from = packets_sums[start].from;
             int receiver = packets_sums[end].from;
@@ -558,11 +571,11 @@ void load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
     for(int i = 0; i < MAX_ORDERS_PER_PROCESS; i++){
         int to = order_send[id][i];
         // Serialize the queue packets
-        static struct SerialTour *tours_to_send[MAX_QUEUE_PACKETS]; // we guarantee this is not being reused since this loadbalancing is called very sporadically
-        if(tours_to_send[0] == NULL) initialize_serial_tours(&tours_to_send[0], MAX_QUEUE_PACKETS);
-
+        static struct SerialTour *tours_to_send[MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE] = {NULL}; // we guarantee this is not being reused since this loadbalancing is called very sporadically
+        if(tours_to_send[0] == NULL) initialize_serial_tours(tours_to_send, MAX_QUEUE_PACKETS*QUEUE_PACKETS_SIZE);
 
         for(int j = 0; j < MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE; j++){
+            printf("j %p\n", tours_to_send[j]);
             struct Tour *tour = queue_pop(queue);
             serializeTour(tour, tours_to_send[j]);
             free(tour);
@@ -577,7 +590,7 @@ void load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
     for(int i = 0; i < MAX_ORDERS_PER_PROCESS; i++){
         int from = order_recv[id][i];
         // Receive the queue packets from the other process
-        static struct SerialTour *tours_to_receive[MAX_QUEUE_PACKETS]; // TODO AJUST FOR VARIABLE SIZE
+        static struct SerialTour *tours_to_receive[MAX_QUEUE_PACKETS*QUEUE_PACKETS_SIZE] = {NULL}; // TODO AJUST FOR VARIABLE SIZE
         if(tours_to_receive[0] == NULL) initialize_serial_tours(&tours_to_receive[0], MAX_QUEUE_PACKETS);
         MPI_Recv(&tours_to_receive, MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE, MPI_SerialTour, from, QUEUE_DISTRIBUTION_ORDERS_RECEIVE, MPI_COMM_WORLD, MPI_STATUS_IGNORE); // TODO make this async?
         // Deserialize the queue packets and push them to the queue
