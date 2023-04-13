@@ -516,7 +516,6 @@ int order_send[MAX_PROCESSES][MAX_ORDERS_PER_PROCESS] = {0,0};
 int order_send_num[MAX_PROCESSES] = {0,0};
 struct queue_health_packet sum[MAX_QUEUE_PACKETS];
 void load_balance(priority_queue_t *queue){ // reports the queue healthy and executes orders from the master if there are any
-    return;
     // iterate through the first 100 items of the queue and average their LB
 
 
@@ -528,10 +527,14 @@ void load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
     while(j < MAX_QUEUE_PACKETS) {
         sum[j].from = id;
         sum[j].sum = 0;
-        for(; i < QUEUE_PACKETS_SIZE && queue->size > i ; i++ ){
+        int this_it =0;
+        for(; this_it < QUEUE_PACKETS_SIZE && queue->size > i ; i++ ){
             printf("LB %f  i: %d j: %d\n",(queue->buffer[i])->lb,i,j);
             sum[j].sum += (queue->buffer[i])->lb;
+            this_it++;
         }
+        //if(this_it < QUEUE_PACKETS_SIZE) // did not finish
+            //sum[j].sum = 0;
         j++;
         printf("[%d] %d Sum: %f\n", id,j, sum[j].sum);
     }
@@ -541,11 +544,12 @@ void load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
     //MPI_Health_Packet
     MPI_Gather( &sum, (MAX_QUEUE_PACKETS +5)*(sizeof(int) +sizeof (double)), MPI_BYTE, packets_sums,  (MAX_QUEUE_PACKETS+5) *(sizeof(int) +sizeof (double)), MPI_BYTE, 0, MPI_COMM_WORLD); // TODO check optimization diferent values for counts
     // print the contents of packets_sums
-    for(int k = 0; k < nr_processes * MAX_QUEUE_PACKETS; k++){
-        printf("%d from: %d sum: %f\n",k, packets_sums[k].from, packets_sums[k].sum);
-    }
 
     if(id == 0) {
+        for(int k = 0; k < nr_processes * MAX_QUEUE_PACKETS; k++){
+            printf("%d from: %d sum: %f\n",k, packets_sums[k].from, packets_sums[k].sum);
+        }
+
         // Match queue packets with each other
         qsort(packets_sums, MAX_QUEUE_PACKETS * nr_processes, sizeof(struct queue_health_packet),
               (int (*)(const void *, const void *)) compare);
@@ -554,22 +558,32 @@ void load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
         for (; start >= end; start++, end--) {
             int from = packets_sums[start].from;
             int receiver = packets_sums[end].from;
+            if(packets_sums[start].sum == 0 ){
+                order_send[from][order_send_num[from]++] = -1;
+                order_recv[receiver][order_recv_num[receiver]++] = -1;
+                break; // do not send empty packets! or half empty (this way is simpler, no need to do the average 4 example)
+            }
+
             order_send[from][order_send_num[from]++] = packets_sums[end].from;
             order_recv[receiver][order_recv_num[receiver]++] = packets_sums[start].from;
-            // Todo add -1 check to avoid sendint unnecessary tours?
         }
         // This is a scatter but since order is not guaranteed we need to send the data individually to each process
+        static MPI_Request orders_req_send[MAX_PROCESSES];
+        static MPI_Request orders_req_recv[MAX_PROCESSES];
+
         for(int i = 0; i < nr_processes; i++){
-            MPI_Send(&order_send[i], MAX_ORDERS_PER_PROCESS, MPI_INT, i, QUEUE_DISTRIBUTE_GIVE, MPI_COMM_WORLD);
-            MPI_Send(&order_recv[i], MAX_ORDERS_PER_PROCESS, MPI_INT, i, QUEUE_DISTRIBUTE_TAKE, MPI_COMM_WORLD);
+            MPI_Isend(&order_send[i], MAX_ORDERS_PER_PROCESS, MPI_INT, i, QUEUE_DISTRIBUTE_GIVE, MPI_COMM_WORLD, &orders_req_send[i]); //
+            MPI_Isend(&order_recv[i], MAX_ORDERS_PER_PROCESS, MPI_INT, i, QUEUE_DISTRIBUTE_TAKE, MPI_COMM_WORLD, &orders_req_recv[i]);
         }
     }
+
     MPI_Recv(&order_send[id], MAX_ORDERS_PER_PROCESS, MPI_INT, 0, QUEUE_DISTRIBUTE_GIVE, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     MPI_Recv(&order_recv[id], MAX_ORDERS_PER_PROCESS, MPI_INT, 0, QUEUE_DISTRIBUTE_TAKE, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
     // Iterate through all send orders and asynchronously send the queue packets to the other process
     for(int i = 0; i < MAX_ORDERS_PER_PROCESS; i++){
         int to = order_send[id][i];
+        if(to == -1) break;
         // Serialize the queue packets
         static struct SerialTour *tours_to_send[MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE] = {NULL}; // we guarantee this is not being reused since this loadbalancing is called very sporadically
         if(tours_to_send[0] == NULL) initialize_serial_tours(tours_to_send, MAX_QUEUE_PACKETS*QUEUE_PACKETS_SIZE);
@@ -582,13 +596,14 @@ void load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
         }
         // Send the queue packets to the other process
         //MPI_Send(&tours_to_send, MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE, MPI_Tour, to, QUEUE_DISTRIBUTION_ORDERS_SEND, MPI_COMM_WORLD);
-        MPI_Request request;
-        MPI_Isend(&tours_to_send, MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE, MPI_SerialTour, to, QUEUE_DISTRIBUTION_ORDERS_SEND, MPI_COMM_WORLD, &request);
+        static MPI_Request send_tours_req[MAX_ORDERS_PER_PROCESS];
+        MPI_Isend(&tours_to_send, MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE, MPI_SerialTour, to, QUEUE_DISTRIBUTION_ORDERS_SEND, MPI_COMM_WORLD, &send_tours_req[i]);
     }
 
     // Iterate through each possible receive order
     for(int i = 0; i < MAX_ORDERS_PER_PROCESS; i++){
         int from = order_recv[id][i];
+        if(from == -1) break;
         // Receive the queue packets from the other process
         static struct SerialTour *tours_to_receive[MAX_QUEUE_PACKETS*QUEUE_PACKETS_SIZE] = {NULL}; // TODO AJUST FOR VARIABLE SIZE
         if(tours_to_receive[0] == NULL) initialize_serial_tours(&tours_to_receive[0], MAX_QUEUE_PACKETS);
