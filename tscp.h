@@ -1,5 +1,6 @@
 #ifndef UNTITLED_TSCP_H
 #define UNTITLED_TSCP_H
+#define MAX_THREADS 6
 
 #include "queue.h"
 #include <omp.h>
