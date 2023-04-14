@@ -442,7 +442,7 @@ int compare(struct queue_health_packet a, struct queue_health_packet b) {
 }
 
 
-struct Tour *deserializeTour(struct SerialTour *serialTour) {
+struct Tour *deserializeTour(priority_queue_t * queue, struct SerialTour *serialTour) {
     // Another option would be to have the tour store a pointer to an array, instead of building the linked list, since the cities visited are only usefull when presenting the solution
     // Drawbacks:
     // more complex free (one more if), (but deserialization is would be more imidiate)
@@ -452,7 +452,10 @@ struct Tour *deserializeTour(struct SerialTour *serialTour) {
     tour->nr_visited = serialTour->nr_visited;
     tour->current_city = serialTour->current_city;
     tour->cost = serialTour->cost;
-    if (serialTour->cost > 999999) printf("WARNING: Received filler tour...");
+    if (serialTour->cost > 999999 || serialTour->cities_visited > 63 || serialTour->cost <= 0 || serialTour->lb <= 0) {
+        printf("WARNING: Received filler tour...");
+        return NULL;
+    }
     tour->lb = serialTour->lb;
     struct step_middle *this_step = (struct step_middle *) tour;
     int i = serialTour->nr_visited;
@@ -465,6 +468,7 @@ struct Tour *deserializeTour(struct SerialTour *serialTour) {
     }
     this_step->previous_step = NULL;
     //free(serialTour->cities);
+    queue_push(queue, tour);
     return tour;
 }
 
@@ -486,7 +490,7 @@ struct SerialTour *initialize_serial_tours(struct SerialTour **tours, int nr_of_
 struct queue_health_packet *packets_sums = NULL;
 #define MAX_ORDERS_PER_PROCESS 4
 
-void measure_queue_health(priority_queue_t *queue, struct queue_health_packet *sum, struct Tour** local_tours_to_send) {
+int measure_queue_health(priority_queue_t *queue, struct queue_health_packet *sum, struct Tour** local_tours_to_send) {
     int j = 0;
     int i = 0;
     int tours_retreived = 0;
@@ -506,7 +510,7 @@ void measure_queue_health(priority_queue_t *queue, struct queue_health_packet *s
                 tours_retreived--;
                 while(tours_retreived > start_retrived)
                 {
-                    printf("Pushing back %d %d\n",tours_retreived,id);
+                    printf("Pushing back %d %d",tours_retreived,id);
                     assert(local_tours_to_send[--tours_retreived] != NULL);
                     queue_push(queue, local_tours_to_send[--tours_retreived]);
                 }
@@ -518,9 +522,10 @@ void measure_queue_health(priority_queue_t *queue, struct queue_health_packet *s
         }
         //if (this_it < QUEUE_PACKETS_SIZE) // did not finish
         //sum[j].sum = 0;
-        printf("[%d] %d Sum: %f\n", id, j, sum[j].sum);
+        //printf("[%d] %d Sum: %f\n", id, j, sum[j].sum);
         j++;
     }
+    return tours_retreived;
 }
 
 int order_recv[MAX_PROCESSES][MAX_ORDERS_PER_PROCESS + 1] = {0, 0};
@@ -533,12 +538,10 @@ bool load_balance(
     // iterate through the first 100 items of the queue and average their LB
 
 
-    /*
     struct Tour * t = queue_pop(queue);
     if(t == NULL) return true;
     else queue_push(queue, t);
     return false;
-     */
 
     static int finished = 0;
     if(finished == nr_processes) return true;
@@ -549,7 +552,7 @@ bool load_balance(
 
     static struct queue_health_packet sum[MAX_QUEUE_PACKETS];
     // Access the health of each queue packet
-    measure_queue_health(queue, sum, local_tours_to_send);
+    int tours_retreived = measure_queue_health(queue, sum, local_tours_to_send);
 
     // Get all queue packets from all processes
     //MPI_Health_Packet
@@ -603,11 +606,15 @@ bool load_balance(
         int from = packets_sums[start].from;
         int receiver = packets_sums[end].from;
         for (; start <= end; start++, end--) {
-            if (packets_sums[start].sum < 0) continue;
+            if (packets_sums[start].sum < 0) exit(-1);
 
-            if (from == start) {
-                end--;
+            if (from == receiver) {
+                start--;// compensate for add in for loop (change the receiver, keep the sender)
                 continue;
+            }
+            if (packets_sums[start].sum == 0) { // this sender has no more packets
+                printf("Early closing order! 1\n");
+                break;
             }
 
 
@@ -622,18 +629,7 @@ bool load_balance(
                 }
                 continue;
             }
-            if (from == receiver) {
-                start--; // compensate for add in for loop (change the receiver, keep the sender)
-                continue;
-            }
 
-            if (packets_sums[start].sum == 0) { // this sender has no more packets
-                printf("Early closing order! 1\n");
-                //order_send[from][order_send_num[from]++] = -1;
-                //end--; // keep the receiver(this loop will now close all senders)
-                //order_recv[receiver][order_recv_num[receiver]++] = -1;
-                break; // do not send empty packets! or half empty (this way is simpler, no need to do the average 4 example)
-            }
             order_send[from][order_send_num[from]++] = packets_sums[end].from;
             order_recv[receiver][order_recv_num[receiver]++] = packets_sums[start].from;
         }
@@ -664,8 +660,10 @@ bool load_balance(
         }
 
         for (int i = 1; i < nr_processes; i++) {
+            if(orders_req_send[i]) MPI_Wait(&orders_req_send[i], MPI_STATUS_IGNORE);
             MPI_Isend(&order_send[i], MAX_ORDERS_PER_PROCESS, MPI_INT, i, QUEUE_DISTRIBUTE_GIVE, MPI_COMM_WORLD,
                       &orders_req_send[i]); //
+            if(orders_req_recv[i]) MPI_Wait(&orders_req_send[i], MPI_STATUS_IGNORE);
             MPI_Isend(&order_recv[i], MAX_ORDERS_PER_PROCESS, MPI_INT, i, QUEUE_DISTRIBUTE_TAKE, MPI_COMM_WORLD,
                       &orders_req_recv[i]);
         }
@@ -698,52 +696,61 @@ bool load_balance(
     }
 
     // Iterate through all send orders and asynchronously send the queue packets to the other process
+
     int tours_sent = 0;
     for (int i = 0; i < MAX_ORDERS_PER_PROCESS; i++) {
         int to = my_orders_send[i];
         //if(to == id) continue;
-        if (to == -1) break;
+        if (to < 0) break;
         printf("[%d] Processing order SEND tour TO %d. Order nr: %d\n", id, to, i);
         // Serialize the queue packets
         static struct SerialTour tours_to_send[MAX_ORDERS_PER_PROCESS *
                                                QUEUE_PACKETS_SIZE]; // we guarantee this is not being reused since this loadbalancing is called very sporadically
         //if(tours_to_send[0] == NULL) initialize_serial_tours(tours_to_send, MAX_ORDERS_PER_PROCESS*QUEUE_PACKETS_SIZE);
 
-        int j = tours_sent;
         printf("Tours already send %d\n", tours_sent);
-        for (; j - tours_sent < QUEUE_PACKETS_SIZE; j++) {
-            serializeTour(local_tours_to_send[j], &tours_to_send[j]);
-            free(local_tours_to_send[j]);
+        for (int o = 0;  o < QUEUE_PACKETS_SIZE; o++) {
+            printf("!!------------Serializing tour %d--------!!\n", o + tours_sent);
+            serializeTour(local_tours_to_send[tours_sent+o], &tours_to_send[tours_sent+o]);
+            free(local_tours_to_send[tours_sent+o]);
         }
-        printf("[%d] %d tours sent to process %d\n", id, j - tours_sent, to);
+        tours_sent += QUEUE_PACKETS_SIZE;
+
+        printf("[%d] Tours packet sent to process %d\n", id, to);
         // Send the queue packets to the other process
         //MPI_Send(&tours_to_send, MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE, MPI_Tour, to, QUEUE_DISTRIBUTION_ORDERS_SEND, MPI_COMM_WORLD);
+
         static MPI_Request send_tours_req[MAX_ORDERS_PER_PROCESS];
+        if(send_tours_req[i]) MPI_Wait(&send_tours_req[i], MPI_STATUS_IGNORE);
         MPI_Isend(&tours_to_send[tours_sent],sizeof(struct SerialTour) *  QUEUE_PACKETS_SIZE, MPI_BYTE, to,
                   QUEUE_DISTRIBUTION_TOUR_TRANSMITION, MPI_COMM_WORLD, &send_tours_req[i]);
-        tours_sent = j;
     }
+    printf("tours_retreived  %d tours_sent %d\n", tours_retreived, tours_sent);
+    // push back into the queue the tours that were not sent
+    for (int i = tours_sent; i < tours_retreived; i++) {
+        printf("Pushing back tour %d", i);
+        queue_push(queue,local_tours_to_send[i]);
+    }
+
 
     // Receive the queue packets from the other process
     bool received_tours = true;
     for (int i = 0; i < MAX_ORDERS_PER_PROCESS; i++) {
         int from = my_orders_rec[i];
         //if(from ==id) continue;
-        if (from == -1) {
+        if (from < 0) {
             received_tours = false;
             break;
         }
         printf("[%d] Processing order RECEIVE tour FROM %d\n", id, from);
-        struct SerialTour tours_to_receive[
-                MAX_ORDERS_PER_PROCESS * QUEUE_PACKETS_SIZE];// = {NULL}; // TODO AJUST FOR VARIABLE SIZE
+        struct SerialTour tours_to_receive[QUEUE_PACKETS_SIZE];// = {NULL}; // TODO AJUST FOR VARIABLE SIZE
         MPI_Status status;
         MPI_Recv(&tours_to_receive, sizeof(struct SerialTour) * QUEUE_PACKETS_SIZE, MPI_BYTE, from, QUEUE_DISTRIBUTION_TOUR_TRANSMITION,
                  MPI_COMM_WORLD, &status); // TODO make this async? // getting stuck here
         // Deserialize the queue packets and push them to the queue
         for (int j = 0; j < QUEUE_PACKETS_SIZE; j++) {
-            struct Tour *tour = deserializeTour(&tours_to_receive[j]);
-            assert(tour->current_city <= 30);
-            queue_push(queue, tour);
+            deserializeTour(queue, &tours_to_receive[j]);
+            //assert(tour->current_city <= 30);
         }
         printf("[%d] %d tours received from process %d", id, QUEUE_PACKETS_SIZE, from);
     }
@@ -776,7 +783,7 @@ void visit_city(struct Tour *tour, int destination, struct AlgorithmState *algo_
                     algo_state->sol_cost = final_cost;
                     algo_state->sol_lb = final_lb;
                     scatter_solution(final_cost, final_lb);
-                    printf("Solution found with cost %f", final_cost);
+                    //printf("Solution found with cost %f", final_cost);
                     queue_trim(algo_state->queue, final_cost);
                 } else {
                     free(new_tour); // not free_tour because we only want to delete this piece, and do not wnat to look to prev step
