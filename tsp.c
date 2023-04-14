@@ -364,6 +364,12 @@ struct Tour *go_to_city(struct Tour *tour, short city_id, struct AlgorithmState 
 //step_worst_than_found_solution;
 //}
 
+//#define DISABLE_PRINTF
+
+//ifdef DISABLE_PRINTF
+//#define printf(fmt, ...) (0)
+//#endif
+
 #define SOLUTION_FOUND_TO_MASTER 13456
 
 void scatter_solution(double solution_cost, double sol_lb) {
@@ -425,9 +431,17 @@ void distribute_load() {
     }
 }
 
+struct queue_health_packet {
+    int from;
+    double sum;
+};
 
-int compare(const double *a, const double *b) {
-    return *a > *b;
+int compare(struct queue_health_packet a, struct queue_health_packet b) {
+    if(a.sum == b.sum ) {
+        // return 0 or 1 randomly
+        return rand() % 2;
+    }
+    return a.sum > b.sum;
 }
 
 
@@ -457,10 +471,7 @@ struct Tour *deserializeTour(struct SerialTour *serialTour) {
 
 
 MPI_Datatype MPI_Health_Packet;
-struct queue_health_packet {
-    int from;
-    double sum;
-};
+
 
 struct SerialTour *initialize_serial_tours(struct SerialTour **tours, int nr_of_tours) {
     printf("Initializing serial tours vector\n");
@@ -549,9 +560,6 @@ bool load_balance(
     }
 
     if (id == 0) {
-        for (int k = 0; k < nr_processes * MAX_QUEUE_PACKETS; k++) {
-            printf("%d from: %d sum: %f\n", k, packets_sums[k].from, packets_sums[k].sum);
-        }
 
         // if the first packet from each process has 0 sum
         finished = 0;
@@ -571,6 +579,14 @@ bool load_balance(
         qsort(packets_sums, MAX_QUEUE_PACKETS * nr_processes, sizeof(struct queue_health_packet),
               (int (*)(const void *, const void *)) compare);
 
+        for (int k = 0; k < nr_processes * MAX_QUEUE_PACKETS; k++) {
+            printf("%d from: %d sum: %f\n", k, packets_sums[k].from, packets_sums[k].sum);
+        }
+        // print packets_sums
+        for(int k = 0; k < nr_processes * MAX_QUEUE_PACKETS; k++) {
+            printf("%d", packets_sums[k].from);
+        }
+        printf("\n");
         for (int i = 0; i < nr_processes; i++) {
             order_send[i][0] = -1;
             order_recv[i][0] = -1;
@@ -678,7 +694,7 @@ bool load_balance(
     int tours_sent = 0;
     for (int i = 0; i < MAX_ORDERS_PER_PROCESS; i++) {
         int to = my_orders_send[i];
-        if(to == id) continue;
+        //if(to == id) continue;
         if (to == -1) break;
         printf("[%d] Processing order SEND tour TO %d. Order nr: %d\n", id, to, i);
         // Serialize the queue packets
@@ -705,7 +721,7 @@ bool load_balance(
     bool received_tours = true;
     for (int i = 0; i < MAX_ORDERS_PER_PROCESS; i++) {
         int from = my_orders_rec[i];
-        if(from ==id) continue;
+        //if(from ==id) continue;
         if (from == -1) {
             received_tours = false;
             break;
@@ -883,7 +899,7 @@ void tscp(struct AlgorithmState *algo_state) {
 
     priority_queue_t *final_queue = queue_create(NULL);
     if (id == 0) printf("There are %ld tours to distribute\n", algo_state->queue->size);
-    int current_proc = 1;
+    int current_proc = 0;
     int direction = -1;
     while ((current_tour = queue_pop(algo_state->queue))) {
         if (current_proc == id) queue_push(final_queue, current_tour);
