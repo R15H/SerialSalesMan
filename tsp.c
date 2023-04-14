@@ -450,6 +450,7 @@ struct Tour *deserializeTour(struct SerialTour *serialTour) {
         this_step->previous_step = step;
         this_step = step;
     }
+    this_step->previous_step = NULL;
     //free(serialTour->cities);
     return tour;
 }
@@ -473,8 +474,44 @@ struct SerialTour *initialize_serial_tours(struct SerialTour **tours, int nr_of_
 }
 
 struct queue_health_packet *packets_sums = NULL;
-#define MAX_ORDERS_PER_PROCESS 30
+#define MAX_ORDERS_PER_PROCESS 4
 
+void measure_queue_health(priority_queue_t *queue, struct queue_health_packet *sum, struct Tour** local_tours_to_send) {
+    int j = 0;
+    int i = 0;
+    int tours_retreived = 0;
+    int start_retrived = 0;
+    printf("Here %d %d %ld %d\n", MAX_QUEUE_PACKETS, j, queue->size, id);
+    while (j < MAX_QUEUE_PACKETS) {
+        sum[j].from = id;
+        sum[j].sum = 0;
+        int this_it = 0;
+        start_retrived = tours_retreived;
+        for (; this_it < QUEUE_PACKETS_SIZE; i++) {
+            local_tours_to_send[tours_retreived++] = queue_pop(queue);
+            if (local_tours_to_send[tours_retreived - 1] == NULL) {
+                printf("NULL tour\n");
+                sum[j].sum = 0;
+                // push back all the tours that do not fill a complete queue packet
+                tours_retreived--;
+                while(tours_retreived > start_retrived)
+                {
+                    printf("Pushing back %d %d\n",tours_retreived,id);
+                    assert(local_tours_to_send[--tours_retreived] != NULL);
+                    queue_push(queue, local_tours_to_send[--tours_retreived]);
+                }
+                break;
+            }
+            sum[j].sum +=  local_tours_to_send[tours_retreived - 1]->lb;
+            //printf("LB %f Total: %f i: %d j: %d\n", local_tours_to_send[tours_retreived - 1]->lb, sum[j].sum,i, j);
+            this_it++;
+        }
+        //if (this_it < QUEUE_PACKETS_SIZE) // did not finish
+        //sum[j].sum = 0;
+        printf("[%d] %d Sum: %f\n", id, j, sum[j].sum);
+        j++;
+    }
+}
 
 int order_recv[MAX_PROCESSES][MAX_ORDERS_PER_PROCESS + 1] = {0, 0};
 int order_recv_num[MAX_PROCESSES] = {0, 0};
@@ -488,26 +525,11 @@ bool load_balance(
     MPI_Barrier(MPI_COMM_WORLD);
     printf("[%d] Queue size %ld\n", id, queue->size);
 
+    struct Tour *local_tours_to_send[MAX_ORDERS_PER_PROCESS* QUEUE_PACKETS_SIZE];
+
     static struct queue_health_packet sum[MAX_QUEUE_PACKETS];
     // Access the health of each queue packet
-    int j = 0;
-    int i = 0;
-    printf("Here %d %d %ld %d\n", MAX_QUEUE_PACKETS, j, queue->size, id);
-    while (j < MAX_QUEUE_PACKETS) {
-        sum[j].from = id;
-        sum[j].sum = 0;
-        int this_it = 0;
-        for (; this_it < QUEUE_PACKETS_SIZE && queue->size > i; i++) {
-            printf("LB %f  i: %d j: %d\n", (queue->buffer[i])->lb, i, j);
-            sum[j].sum += (queue->buffer[i])->lb;
-            this_it++;
-        }
-        if (this_it < QUEUE_PACKETS_SIZE) // did not finish
-            sum[j].sum = 0;
-        j++;
-        printf("[%d] %d Sum: %f\n", id, j, sum[j].sum);
-    }
-
+    measure_queue_health(queue, sum, local_tours_to_send);
 
     // Get all queue packets from all processes
     //MPI_Health_Packet
@@ -516,10 +538,28 @@ bool load_balance(
                MPI_COMM_WORLD); // TODO check optimization diferent values for counts
     // print the contents of packets_sums
 
+    int finished = 0;
+    if(id != 0) {
+        MPI_Bcast(&finished, 1, MPI_INT, 0, MPI_COMM_WORLD);
+        if(finished == nr_processes) return true;
+    }
+
     if (id == 0) {
         for (int k = 0; k < nr_processes * MAX_QUEUE_PACKETS; k++) {
             printf("%d from: %d sum: %f\n", k, packets_sums[k].from, packets_sums[k].sum);
         }
+
+        // if the first packet from each process has 0 sum
+        for (int i = 0; i < nr_processes; i++) {
+            if (packets_sums[i * MAX_QUEUE_PACKETS].sum == 0) {
+                finished++;
+            }
+        }
+        MPI_Bcast(&finished, 1, MPI_INT, 0, MPI_COMM_WORLD);
+        if(finished == nr_processes) {
+            return true;
+        }
+
 
         // Match queue packets with each other
         qsort(packets_sums, MAX_QUEUE_PACKETS * nr_processes, sizeof(struct queue_health_packet),
@@ -571,6 +611,7 @@ bool load_balance(
 
         // close the orders
         for (int k = 0; k < nr_processes; ++k) {
+            printf("P %d send %d rec %d   ", k, order_send_num[k], order_recv_num[k]);
             if (order_send_num[from] < MAX_ORDERS_PER_PROCESS) {
                 order_send[from][order_send_num[from]++] = -1;
             }
@@ -642,9 +683,8 @@ bool load_balance(
         int j = tours_sent;
         printf("Tours already send %d\n", tours_sent);
         for (; j - tours_sent < QUEUE_PACKETS_SIZE; j++) {
-            struct Tour *tour = queue_pop(queue);
-            serializeTour(tour, &tours_to_send[j]);
-            free(tour);
+            serializeTour(local_tours_to_send[j], &tours_to_send[j]);
+            free(local_tours_to_send[j]);
         }
         printf("[%d] %d tours sent to process %d\n", id, j - tours_sent, to);
         // Send the queue packets to the other process
@@ -659,12 +699,12 @@ bool load_balance(
     bool received_tours = true;
     for (int i = 0; i < MAX_ORDERS_PER_PROCESS; i++) {
         int from = my_orders_rec[i];
-        printf("[%d] Processing order RECEIVE tour FROM %d\n", id, from);
         if(from ==id) continue;
         if (from == -1) {
             received_tours = false;
             break;
         }
+        printf("[%d] Processing order RECEIVE tour FROM %d\n", id, from);
         struct SerialTour tours_to_receive[
                 MAX_ORDERS_PER_PROCESS * QUEUE_PACKETS_SIZE];// = {NULL}; // TODO AJUST FOR VARIABLE SIZE
         MPI_Status status;
@@ -678,7 +718,7 @@ bool load_balance(
         printf("[%d] %d tours received from process %d", id, QUEUE_PACKETS_SIZE, from);
     }
     printf("[%d] Queue size %ld\n", id, queue->size);
-    return received_tours;
+    return true;
 }
 
 
@@ -757,7 +797,7 @@ void gather_best_solution(struct AlgorithmState *algo_state) {
 
             if (flag) {
 
-                vol_cost[i * 2] = vol_cost[i * 2] / 2;
+                vol_cost[i * 2] = vol_cost[i * 2] ;
                 printf("---Received solution from slave %d with cost %.2f while current sol is %.2f--\n", i,
                        vol_cost[i * 2], algo_state->sol_cost);
 
@@ -840,8 +880,6 @@ void tscp(struct AlgorithmState *algo_state) {
     int current_proc = 0;
     int direction = -1;
     while ((current_tour = queue_pop(algo_state->queue))) {
-        //printf("Current proc %d, current_tour %p\n", current_proc, current_tour);
-        //fflush(stdout);
         if (current_proc == id) queue_push(final_queue, current_tour);
         else free_tour(current_tour);
         if (current_proc == nr_processes - 1 || current_proc == 0) {
@@ -858,21 +896,16 @@ void tscp(struct AlgorithmState *algo_state) {
     algo_state->queue = final_queue;
 
 
-    bool finished = false;
-    bool last_received_tours = true;
-    bool received_tours = true;
-    while (!finished) {
+    while (1) {
         printf("Running algo..\n");
-        received_tours = run_algo(algo_state, current_tour);
-        if (!received_tours && !last_received_tours) finished = true;
-        last_received_tours = received_tours;
+        if(run_algo(algo_state, current_tour)) return;
     }
-    printf("Terminating! %d", id);
 }
 
 bool run_algo(struct AlgorithmState *algo_state, struct Tour *current_tour) {
     int i = 0;
     int j = 0;
+    bool exit = false;
     while ((current_tour = queue_pop(algo_state->queue))) {
         int newToursCreated = analyseTour(current_tour, algo_state);
         i++;
@@ -881,9 +914,17 @@ bool run_algo(struct AlgorithmState *algo_state, struct Tour *current_tour) {
         if (i > 5000000) {
             printf("Syncronizing\n");
             gather_best_solution(algo_state);
-            load_balance(algo_state->queue);
-            if (j > 10) {
+            if (j > 2) {
                 printf("Loadbalancing...\n");
+                exit = load_balance(algo_state->queue);
+                if(exit){
+                    if (newToursCreated == 0) {
+                        free_tour(current_tour);
+                        continue;
+                    }
+                    ((struct step_middle *) current_tour)->ref_counter = newToursCreated;
+                    return exit;
+                }
                 j = 0;
             }
             j++;
