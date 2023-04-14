@@ -386,7 +386,7 @@ void scatter_solution(double solution_cost, double sol_lb) {
         if (flag) {
             MPI_Isend(&current_solution, 2, MPI_DOUBLE, 0, SOLUTION_FOUND_TO_MASTER, MPI_COMM_WORLD,
                       &request);//, &sol_requests[id]); // the variable being broadcasted is a pointer, as so it cannot be in the stack!
-            printf("id: %d scattering a solution with cost: %f\n", id, solution_cost);
+            //printf("id: %d scattering a solution with cost: %f\n", id, solution_cost);
         } else printf("%d Did not scatter solution %f\n", id,solution_cost);
         // TODO either wait for the previous broadcast to finish, or sequechule send... (OMP task?)
     } else
@@ -446,14 +446,14 @@ struct Tour *deserializeTour(priority_queue_t * queue, struct SerialTour *serial
     // Another option would be to have the tour store a pointer to an array, instead of building the linked list, since the cities visited are only usefull when presenting the solution
     // Drawbacks:
     // more complex free (one more if), (but deserialization is would be more imidiate)
-    printf("DESERIALIZING TOUR\n");
+    //printf("DESERIALIZING TOUR\n");
     struct Tour *tour = malloc(sizeof(struct Tour));
     tour->cities_visited = serialTour->cities_visited;
     tour->nr_visited = serialTour->nr_visited;
     tour->current_city = serialTour->current_city;
     tour->cost = serialTour->cost;
     if (serialTour->cost > 999999 || serialTour->cities_visited > 63 || serialTour->cost <= 0 || serialTour->lb <= 0) {
-        printf("WARNING: Received filler tour...");
+        //printf("WARNING: Received filler tour...");
         return NULL;
     }
     tour->lb = serialTour->lb;
@@ -477,7 +477,7 @@ MPI_Datatype MPI_Health_Packet;
 
 
 struct SerialTour *initialize_serial_tours(struct SerialTour **tours, int nr_of_tours) {
-    printf("Initializing serial tours vector\n");
+    //printf("Initializing serial tours vector\n");
     for (int t = 0; t < nr_of_tours; t++) {
         tours[t] = malloc((sizeof(struct SerialTour) +
                            ((nr_of_cities - 1) * sizeof(unsigned short))
@@ -495,7 +495,7 @@ int measure_queue_health(priority_queue_t *queue, struct queue_health_packet *su
     int i = 0;
     int tours_retreived = 0;
     int start_retrived = 0;
-    printf("Here %d %d %ld %d\n", MAX_QUEUE_PACKETS, j, queue->size, id);
+    //printf("Here %d %d %ld %d\n", MAX_QUEUE_PACKETS, j, queue->size, id);
     while (j < MAX_QUEUE_PACKETS) {
         sum[j].from = id;
         sum[j].sum = 0;
@@ -504,13 +504,13 @@ int measure_queue_health(priority_queue_t *queue, struct queue_health_packet *su
         for (; this_it < QUEUE_PACKETS_SIZE; i++) {
             local_tours_to_send[tours_retreived++] = queue_pop(queue);
             if (local_tours_to_send[tours_retreived - 1] == NULL) {
-                printf("NULL tour\n");
+                //printf("NULL tour\n");
                 sum[j].sum = 0;
                 // push back all the tours that do not fill a complete queue packet
                 tours_retreived--;
                 while(tours_retreived > start_retrived)
                 {
-                    printf("Pushing back %d %d",tours_retreived,id);
+                    ////printf("Pushing back %d %d",tours_retreived,id);
                     assert(local_tours_to_send[--tours_retreived] != NULL);
                     queue_push(queue, local_tours_to_send[--tours_retreived]);
                 }
@@ -546,7 +546,7 @@ bool load_balance(
     static int finished = 0;
     if(finished == nr_processes) return true;
     MPI_Barrier(MPI_COMM_WORLD);
-    printf("[%d] Queue size %ld\n", id, queue->size);
+    //printf("[%d] Queue size %ld\n", id, queue->size);
 
     struct Tour *local_tours_to_send[MAX_ORDERS_PER_PROCESS* QUEUE_PACKETS_SIZE];
 
@@ -564,7 +564,7 @@ bool load_balance(
     if(id != 0) {
         MPI_Bcast(&finished, 1, MPI_INT, 0, MPI_COMM_WORLD);
         if(finished == nr_processes) {
-            printf("Process %d finished\n", id);
+            //printf("Process %d finished\n", id);
             return true;
         }
     }
@@ -580,7 +580,7 @@ bool load_balance(
         }
         MPI_Bcast(&finished, 1, MPI_INT, 0, MPI_COMM_WORLD);
         if(finished == nr_processes) {
-            printf("Process %d finished\n", id);
+            //printf("Process %d finished\n", id);
             return true;
         }
 
@@ -590,13 +590,13 @@ bool load_balance(
               (int (*)(const void *, const void *)) compare);
 
         for (int k = 0; k < nr_processes * MAX_QUEUE_PACKETS; k++) {
-            printf("%d from: %d sum: %f\n", k, packets_sums[k].from, packets_sums[k].sum);
+            //printf("%d from: %d sum: %f\n", k, packets_sums[k].from, packets_sums[k].sum);
         }
         // print packets_sums
         for(int k = 0; k < nr_processes * MAX_QUEUE_PACKETS; k++) {
-            printf("%d", packets_sums[k].from);
+            //printf("%d", packets_sums[k].from);
         }
-        printf("\n");
+        //printf("\n");
         for (int i = 0; i < nr_processes; i++) {
             order_send[i][0] = -1;
             order_recv[i][0] = -1;
@@ -613,13 +613,13 @@ bool load_balance(
                 continue;
             }
             if (packets_sums[start].sum == 0) { // this sender has no more packets
-                printf("Early closing order! 1\n");
+                //printf("Early closing order! 1\n");
                 break;
             }
 
 
             if (order_send_num[from] > MAX_ORDERS_PER_PROCESS || order_recv_num[receiver] > MAX_ORDERS_PER_PROCESS) {
-                printf("Early closing order! 2\n");
+                //printf("Early closing order! 2\n");
                 if(order_send_num[from] > MAX_ORDERS_PER_PROCESS && order_recv_num[receiver] > MAX_ORDERS_PER_PROCESS)continue;
                 if (order_send_num[from] > MAX_ORDERS_PER_PROCESS) {
                     end++; // skip this sender, the receiver will the the same in the next iteration
@@ -636,7 +636,7 @@ bool load_balance(
 
         // close the orders
         for (int k = 0; k < nr_processes; ++k) {
-            printf("P %d send %d rec %d   ", k, order_send_num[k], order_recv_num[k]);
+            //printf("P %d send %d rec %d   ", k, order_send_num[k], order_recv_num[k]);
             if (order_send_num[from] < MAX_ORDERS_PER_PROCESS) {
                 order_send[from][order_send_num[from]++] = -1;
             }
@@ -649,12 +649,12 @@ bool load_balance(
         static MPI_Request orders_req_recv[MAX_PROCESSES];
 
         // print the orders genereted
-        printf("Master genereted the following orders:\n");
+        //printf("Master genereted the following orders:\n");
         for (int k = 0; k < nr_processes; ++k) {
-            printf("For process %d\n", k);
+            //printf("For process %d\n", k);
             for (int u = 0; u < MAX_ORDERS_PER_PROCESS; u++) {
-                printf("   will send queues to process %d\n", order_send[k][u]);
-                printf("   will receive queues from  process %d\n", order_recv[k][u]);
+                //printf("   will send queues to process %d\n", order_send[k][u]);
+                //printf("   will receive queues from  process %d\n", order_recv[k][u]);
             }
 
         }
@@ -688,10 +688,10 @@ bool load_balance(
 
     // print my orders rec
     if (id == 0) {
-        printf("Process %d received the following orders:\n", id);
+        //printf("Process %d received the following orders:\n", id);
         for (int u = 0; u < MAX_ORDERS_PER_PROCESS; u++) {
-            printf("[%d]   will send queues to process %d\n", my_orders_send[u], id);
-            printf("[%d]   will receive queues from  process %d\n", my_orders_rec[u], id);
+            //printf("[%d]   will send queues to process %d\n", my_orders_send[u], id);
+            ////printf("[%d]   will receive queues from  process %d\n", my_orders_rec[u], id);
         }
     }
 
@@ -702,21 +702,21 @@ bool load_balance(
         int to = my_orders_send[i];
         //if(to == id) continue;
         if (to < 0) break;
-        printf("[%d] Processing order SEND tour TO %d. Order nr: %d\n", id, to, i);
+        //printf("[%d] Processing order SEND tour TO %d. Order nr: %d\n", id, to, i);
         // Serialize the queue packets
         static struct SerialTour tours_to_send[MAX_ORDERS_PER_PROCESS *
                                                QUEUE_PACKETS_SIZE]; // we guarantee this is not being reused since this loadbalancing is called very sporadically
         //if(tours_to_send[0] == NULL) initialize_serial_tours(tours_to_send, MAX_ORDERS_PER_PROCESS*QUEUE_PACKETS_SIZE);
 
-        printf("Tours already send %d\n", tours_sent);
+        //printf("Tours already send %d\n", tours_sent);
         for (int o = 0;  o < QUEUE_PACKETS_SIZE; o++) {
-            printf("!!------------Serializing tour %d--------!!\n", o + tours_sent);
+            //printf("!!------------Serializing tour %d--------!!\n", o + tours_sent);
             serializeTour(local_tours_to_send[tours_sent+o], &tours_to_send[tours_sent+o]);
             free(local_tours_to_send[tours_sent+o]);
         }
         tours_sent += QUEUE_PACKETS_SIZE;
 
-        printf("[%d] Tours packet sent to process %d\n", id, to);
+        //printf("[%d] Tours packet sent to process %d\n", id, to);
         // Send the queue packets to the other process
         //MPI_Send(&tours_to_send, MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE, MPI_Tour, to, QUEUE_DISTRIBUTION_ORDERS_SEND, MPI_COMM_WORLD);
 
@@ -725,10 +725,10 @@ bool load_balance(
         MPI_Isend(&tours_to_send[tours_sent],sizeof(struct SerialTour) *  QUEUE_PACKETS_SIZE, MPI_BYTE, to,
                   QUEUE_DISTRIBUTION_TOUR_TRANSMITION, MPI_COMM_WORLD, &send_tours_req[i]);
     }
-    printf("tours_retreived  %d tours_sent %d\n", tours_retreived, tours_sent);
+    //printf("tours_retreived  %d tours_sent %d\n", tours_retreived, tours_sent);
     // push back into the queue the tours that were not sent
     for (int i = tours_sent; i < tours_retreived; i++) {
-        printf("Pushing back tour %d", i);
+        //printf("Pushing back tour %d", i);
         queue_push(queue,local_tours_to_send[i]);
     }
 
@@ -742,7 +742,7 @@ bool load_balance(
             received_tours = false;
             break;
         }
-        printf("[%d] Processing order RECEIVE tour FROM %d\n", id, from);
+        //printf("[%d] Processing order RECEIVE tour FROM %d\n", id, from);
         struct SerialTour tours_to_receive[QUEUE_PACKETS_SIZE];// = {NULL}; // TODO AJUST FOR VARIABLE SIZE
         MPI_Status status;
         MPI_Recv(&tours_to_receive, sizeof(struct SerialTour) * QUEUE_PACKETS_SIZE, MPI_BYTE, from, QUEUE_DISTRIBUTION_TOUR_TRANSMITION,
@@ -752,9 +752,9 @@ bool load_balance(
             deserializeTour(queue, &tours_to_receive[j]);
             //assert(tour->current_city <= 30);
         }
-        printf("[%d] %d tours received from process %d", id, QUEUE_PACKETS_SIZE, from);
+        //printf("[%d] %d tours received from process %d", id, QUEUE_PACKETS_SIZE, from);
     }
-    printf("[%d] Queue size %ld\n", id, queue->size);
+    //printf("[%d] Queue size %ld\n", id, queue->size);
     return false;
 }
 
@@ -783,7 +783,7 @@ void visit_city(struct Tour *tour, int destination, struct AlgorithmState *algo_
                     algo_state->sol_cost = final_cost;
                     algo_state->sol_lb = final_lb;
                     scatter_solution(final_cost, final_lb);
-                    //printf("Solution found with cost %f", final_cost);
+                    ////printf("Solution found with cost %f", final_cost);
                     queue_trim(algo_state->queue, final_cost);
                 } else {
                     free(new_tour); // not free_tour because we only want to delete this piece, and do not wnat to look to prev step
@@ -836,8 +836,8 @@ void gather_best_solution(struct AlgorithmState *algo_state) {
             if (flag) {
 
                 vol_cost[i * 2] = vol_cost[i * 2] ;
-                printf("---Received solution from slave %d with cost %.2f while current sol is %.2f--\n", i,
-                       vol_cost[i * 2], algo_state->sol_cost);
+                //printf("---Received solution from slave %d with cost %.2f while current sol is %.2f--\n", i,
+                       //vol_cost[i * 2], algo_state->sol_cost);
 
                 if (algo_state->sol_cost > vol_cost[i * 2] && vol_cost[i * 2] != 0) {
                     solutionData.sol_cost = vol_cost[i * 2];
@@ -867,7 +867,7 @@ void gather_best_solution(struct AlgorithmState *algo_state) {
                 if (algo_state->sol_cost > solutionData.sol_cost) {
                     algo_state->sol_cost = solutionData.sol_cost;
                     algo_state->sol_lb = solutionData.sol_lb;
-                    printf("Process %d received a solution from master: %f AND UPDATED!\n", id, algo_state->sol_cost);
+                    //printf("Process %d received a solution from master: %f AND UPDATED!\n", id, algo_state->sol_cost);
                     queue_trim(algo_state->queue, solutionData.sol_cost);
                 }
                 MPI_Ibcast(&solutionData, 2, MPI_DOUBLE, 0, MPI_COMM_WORLD, &solution_broadcast);
@@ -1112,7 +1112,7 @@ int main(int argc, char *argv[]) {
     }
 
 
-    printf("Nr of proccesses %d\n", nr_processes);
+    //printf("Nr of proccesses %d\n", nr_processes);
     send_solutions =
             malloc((sizeof(struct SerialTour)  ) * nr_processes);
     receive_solutions = malloc((sizeof(struct SerialTour)  ) * nr_processes);
@@ -1128,17 +1128,17 @@ int main(int argc, char *argv[]) {
 
     MPI_Barrier(MPI_COMM_WORLD);
 
-    printf("Process %d ready, %d processes in total\n", id, p);
+    //printf("Process %d ready, %d processes in total\n", id, p);
     exec_time = -MPI_Wtime();
 
 //exec_time = -omp_get_wtime();
     algo_state.queue = queue_create((char (*)(void *, void *)) NULL);
     tscp(&algo_state);
     // gather algo_state solution from all processes
-    printf("Solution before serialize %f\n", algo_state.solution->cost);
+    //printf("Solution before serialize %f\n", algo_state.solution->cost);
     serializeTour(algo_state.solution, &send_solutions[id]);
-    printf("GATHER ALL SOLUTIONS Sending solution from process %d, cost: %.2f, lb: %.2f\n", id, send_solutions[id].cost,
-           send_solutions[id].lb);
+   // printf("GATHER ALL SOLUTIONS Sending solution from process %d, cost: %.2f, lb: %.2f\n", id, send_solutions[id].cost,
+    //       send_solutions[id].lb);
     exec_time += MPI_Wtime();
     fprintf(stderr, "%.1fs\n", exec_time);
 
@@ -1151,7 +1151,6 @@ int main(int argc, char *argv[]) {
                sizeof(struct SerialTour)
             , MPI_BYTE, 0, MPI_COMM_WORLD);
     int best_solution_id = 0;
-    printf("ALL GOOD\n");
 
 
     fflush(stdout);
