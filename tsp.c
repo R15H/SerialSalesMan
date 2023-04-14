@@ -522,6 +522,8 @@ bool load_balance(
         priority_queue_t *queue) { // reports the queue healthy and executes orders from the master if there are any
     // iterate through the first 100 items of the queue and average their LB
 
+    static int finished = 0;
+    if(finished == nr_processes) return true;
     MPI_Barrier(MPI_COMM_WORLD);
     printf("[%d] Queue size %ld\n", id, queue->size);
 
@@ -538,10 +540,12 @@ bool load_balance(
                MPI_COMM_WORLD); // TODO check optimization diferent values for counts
     // print the contents of packets_sums
 
-    int finished = 0;
     if(id != 0) {
         MPI_Bcast(&finished, 1, MPI_INT, 0, MPI_COMM_WORLD);
-        if(finished == nr_processes) return true;
+        if(finished == nr_processes) {
+            printf("Process %d finished\n", id);
+            return true;
+        }
     }
 
     if (id == 0) {
@@ -550,6 +554,7 @@ bool load_balance(
         }
 
         // if the first packet from each process has 0 sum
+        finished = 0;
         for (int i = 0; i < nr_processes; i++) {
             if (packets_sums[i * MAX_QUEUE_PACKETS].sum == 0) {
                 finished++;
@@ -557,6 +562,7 @@ bool load_balance(
         }
         MPI_Bcast(&finished, 1, MPI_INT, 0, MPI_COMM_WORLD);
         if(finished == nr_processes) {
+            printf("Process %d finished\n", id);
             return true;
         }
 
@@ -718,7 +724,7 @@ bool load_balance(
         printf("[%d] %d tours received from process %d", id, QUEUE_PACKETS_SIZE, from);
     }
     printf("[%d] Queue size %ld\n", id, queue->size);
-    return true;
+    return false;
 }
 
 
@@ -877,7 +883,7 @@ void tscp(struct AlgorithmState *algo_state) {
 
     priority_queue_t *final_queue = queue_create(NULL);
     if (id == 0) printf("There are %ld tours to distribute\n", algo_state->queue->size);
-    int current_proc = 0;
+    int current_proc = 1;
     int direction = -1;
     while ((current_tour = queue_pop(algo_state->queue))) {
         if (current_proc == id) queue_push(final_queue, current_tour);
@@ -1127,6 +1133,7 @@ int main(int argc, char *argv[]) {
             serial_tour->cost < receive_solutions[best_solution_id].cost ? best_solution_id = i : 0;
         }
     }
+    print_result(&algo_state, &receive_solutions[best_solution_id]);
 
 //exec_time += omp_get_wtime();
     //if(id == 0) print_result(&algo_state, &receive_solutions[best_solution_id]);
