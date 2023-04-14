@@ -285,7 +285,7 @@ double get_cost_from_city_to_city(unsigned int from, unsigned int to) {
 }
 
 /* Function to calculate x raised to the power y in O(logn)
-    Time Complexity of optimized solution: O(logn)
+    deShowUsagesMenu)Time Complexity of optimized solution: O(logn)
 */
 int power2(int x, unsigned int y) {
     int temp;
@@ -300,6 +300,16 @@ int power2(int x, unsigned int y) {
 }
 
 void serializeTour(struct Tour *tour, struct SerialTour *serial_tour){
+    if(tour == NULL){
+        printf("WARNING: filling empty tour\n");
+        serial_tour->cost = 999999999999999.0;
+        serial_tour->lb = 9999999999999.0;
+        serial_tour->cities_visited = 1;
+        serial_tour->nr_visited = 0;
+        serial_tour->current_city = 0;
+        serial_tour->cities[0] = 0;
+        return;
+    }
     serial_tour->cities_visited =  tour->cities_visited;
     serial_tour->nr_visited = tour->nr_visited;
     serial_tour->cities_visited = tour->cities_visited;
@@ -504,15 +514,17 @@ struct queue_health_packet  *packets_sums = NULL;
 #define MAX_ORDERS_PER_PROCESS 30
 
 
-int order_recv[MAX_PROCESSES][MAX_ORDERS_PER_PROCESS] =    {0,0};
+int order_recv[MAX_PROCESSES][MAX_ORDERS_PER_PROCESS+1] =    {0,0};
 int order_recv_num[MAX_PROCESSES]  = {0,0};
-int order_send[MAX_PROCESSES][MAX_ORDERS_PER_PROCESS] = {0,0};
+int order_send[MAX_PROCESSES][MAX_ORDERS_PER_PROCESS+1] = {0,0};
 int order_send_num[MAX_PROCESSES] = {0,0};
 bool load_balance(priority_queue_t *queue){ // reports the queue healthy and executes orders from the master if there are any
     // iterate through the first 100 items of the queue and average their LB
 
+    MPI_Barrier(MPI_COMM_WORLD);
+    printf("[%d] Queue size %ld\n", id, queue->size);
 
-    struct queue_health_packet sum[MAX_QUEUE_PACKETS];
+    static struct queue_health_packet sum[MAX_QUEUE_PACKETS];
     // Access the health of each queue packet
     int j = 0;
     int i = 0;
@@ -565,17 +577,34 @@ bool load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
 
             if(packets_sums[start].sum == 0 ){
 
-                if(order_send_num[from] > MAX_ORDERS_PER_PROCESS || order_recv_num[receiver] > MAX_ORDERS_PER_PROCESS) continue;
-
+                //if(order_send_num[from] > MAX_ORDERS_PER_PROCESS || order_recv_num[receiver] > MAX_ORDERS_PER_PROCESS) continue;
+                printf("Early closing order! 1\n");
+                order_send[from][order_send_num[from]++] = -1;
+                order_recv[receiver][order_recv_num[receiver]++] = -1;
                 break; // do not send empty packets! or half empty (this way is simpler, no need to do the average 4 example)
             }
 
-            if(order_send_num[from] > MAX_ORDERS_PER_PROCESS-1) continue;
+            if(order_send_num[from] > MAX_ORDERS_PER_PROCESS || order_recv_num[receiver] > MAX_ORDERS_PER_PROCESS) {
+                printf("Early closing order! 2\n");
+                if(order_send[from][order_send_num[from]] == -1) {;} // already closed this
+                else order_send[from][order_send_num[from]++] = -1;
+                if(order_recv[receiver][order_recv_num[receiver]]) {;}
+                else order_recv[receiver][order_recv_num[receiver]++] = -1;
+                continue;
+            }
             order_send[from][order_send_num[from]++] = packets_sums[end].from;
             order_recv[receiver][order_recv_num[receiver]++] = packets_sums[start].from;
         }
-        order_send[from][order_send_num[from]++] = -1;
-        order_recv[receiver][order_recv_num[receiver]++] = -1;
+        // close the orders
+        for (int k = 0; k < nr_processes; ++k) {
+            if(order_send_num[from] > MAX_ORDERS_PER_PROCESS || order_recv_num[receiver] > MAX_ORDERS_PER_PROCESS) {
+                if(order_send[from][order_send_num[from]] == -1) {;} // already closed this
+                else order_send[from][order_send_num[from]++] = -1;
+                if(order_recv[receiver][order_recv_num[receiver]]) {;}
+                else order_recv[receiver][order_recv_num[receiver]++] = -1;
+                continue;
+            }
+        }
         // This is a scatter but since order is not guaranteed we need to send the data individually to each process
         static MPI_Request orders_req_send[MAX_PROCESSES];
         static MPI_Request orders_req_recv[MAX_PROCESSES];
@@ -606,20 +635,20 @@ bool load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
     int tours_sent = 0;
     for(int i = 0; i < MAX_ORDERS_PER_PROCESS; i++){
         int to = my_orders_send[i];
-        printf("[%d] Processing order SEND tour FROM %d\n", id, to);
         if(to == -1) break;
+        printf("[%d] Processing order SEND tour TO %d. Order nr: %d\n", id, to,i);
         // Serialize the queue packets
-        static struct SerialTour *tours_to_send[MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE] = {NULL}; // we guarantee this is not being reused since this loadbalancing is called very sporadically
-        if(tours_to_send[0] == NULL) initialize_serial_tours(tours_to_send, MAX_QUEUE_PACKETS*QUEUE_PACKETS_SIZE);
+        static struct SerialTour *tours_to_send[MAX_ORDERS_PER_PROCESS * QUEUE_PACKETS_SIZE] = {NULL}; // we guarantee this is not being reused since this loadbalancing is called very sporadically
+        if(tours_to_send[0] == NULL) initialize_serial_tours(tours_to_send, MAX_ORDERS_PER_PROCESS*QUEUE_PACKETS_SIZE);
 
         int j = tours_sent;
-        for(;  j  < QUEUE_PACKETS_SIZE + tours_sent; j++){
-            printf("j %p\n", tours_to_send[j]);
+        printf("Tours already send %d\n", tours_sent);
+        for(;  j -tours_sent < QUEUE_PACKETS_SIZE ; j++){
             struct Tour *tour = queue_pop(queue);
             serializeTour(tour, tours_to_send[j]);
             free(tour);
         }
-        printf("[%d] %d tours send to process %d\n", id, j-tours_sent , to);
+        printf("[%d] %d tours sent to process %d\n", id, j-tours_sent , to);
         // Send the queue packets to the other process
         //MPI_Send(&tours_to_send, MAX_QUEUE_PACKETS * QUEUE_PACKETS_SIZE, MPI_Tour, to, QUEUE_DISTRIBUTION_ORDERS_SEND, MPI_COMM_WORLD);
         static MPI_Request send_tours_req[MAX_ORDERS_PER_PROCESS];
@@ -637,7 +666,7 @@ bool load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
         if(tours_to_receive[0] == NULL) initialize_serial_tours(&tours_to_receive[0], MAX_QUEUE_PACKETS);
         MPI_Status status;
 
-        MPI_Recv(&tours_to_receive, QUEUE_PACKETS_SIZE, MPI_SerialTour, from, QUEUE_DISTRIBUTION_TOUR_TRANSMITION, MPI_COMM_WORLD, &status); // TODO make this async?
+        MPI_Recv(&tours_to_receive, QUEUE_PACKETS_SIZE, MPI_SerialTour, from, QUEUE_DISTRIBUTION_TOUR_TRANSMITION, MPI_COMM_WORLD, &status); // TODO make this async? // getting stuck here
         // Deserialize the queue packets and push them to the queue
         for(int j = 0; j < QUEUE_PACKETS_SIZE; j++){
             struct Tour *tour = deserializeTour(tours_to_receive[j]);
@@ -646,6 +675,7 @@ bool load_balance(priority_queue_t *queue){ // reports the queue healthy and exe
         printf("[%d] %d tours received from process %d", id, QUEUE_PACKETS_SIZE , from);
     }
 
+    printf("[%d] Queue size %ld\n", id, queue->size);
 }
 
 
@@ -810,7 +840,11 @@ void tscp(struct AlgorithmState *algo_state) {
         //fflush(stdout);
         if(current_proc == id) queue_push(final_queue,current_tour);
         else free_tour(current_tour);
-        if(current_proc == nr_processes-1 || current_proc == 0) direction = -direction;
+        if(current_proc == nr_processes-1 || current_proc == 0) {
+            if(current_proc == id) queue_push(final_queue,current_tour);
+            else free_tour(current_tour);
+            direction = -direction;
+        }
         current_proc += direction;
     }
     printf("Process %d has %ld tours to analyse\n", id, final_queue->size);
@@ -819,9 +853,13 @@ void tscp(struct AlgorithmState *algo_state) {
 
 
     bool finished = false;
+    bool last_received_tours = true;
+    bool received_tours = true;
     while(!finished){
         printf("Running algo..\n");
-        finished = run_algo(algo_state, current_tour);
+        received_tours = run_algo(algo_state, current_tour);
+        if(!received_tours && !last_received_tours) finished = true;
+        last_received_tours = received_tours;
     }
     printf("Terminating! %d",id);
 }
@@ -832,13 +870,13 @@ bool run_algo(struct AlgorithmState *algo_state, struct Tour *current_tour) {
     while ((current_tour = queue_pop(algo_state->queue))) {
         int newToursCreated = analyseTour(current_tour, algo_state);
         i++;
+
+
         if (newToursCreated == 0) {
             free_tour(current_tour);
             continue;
         }
         ((struct step_middle *) current_tour)->ref_counter = newToursCreated;
-
-
 
         if(i > 5000000) {
             printf("Syncronizing\n");
@@ -851,6 +889,7 @@ bool run_algo(struct AlgorithmState *algo_state, struct Tour *current_tour) {
             j++;
             i = 0;
         }
+
     }
     return load_balance(algo_state->queue);
 }
